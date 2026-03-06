@@ -1,0 +1,51 @@
+defmodule MatdoriWeb.Router do
+  use MatdoriWeb, :router
+
+  pipeline :browser do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug MatdoriWeb.Plugs.Identity
+    plug :fetch_live_flash
+    plug :put_root_layout, html: {MatdoriWeb.Layouts, :root}
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+    plug MatdoriWeb.Plugs.ContentSecurityPolicy
+  end
+
+  pipeline :api do
+    plug :accepts, ["json"]
+  end
+
+  scope "/", MatdoriWeb do
+    pipe_through :browser
+
+    get "/", PageController, :home
+    live "/rooms/latest", RoomLive, :latest
+    live "/rooms/today", RoomLive, :latest
+    live "/rooms/:post_id", RoomLive, :show
+    live "/admin/today", AdminTodayLive
+    live "/admin/reports", AdminReportsLive
+  end
+
+  # Other scopes may use custom stacks.
+  # scope "/api", MatdoriWeb do
+  #   pipe_through :api
+  # end
+
+  # Enable LiveDashboard and Swoosh mailbox preview in development
+  if Application.compile_env(:matdori, :dev_routes) do
+    # If you want to use the LiveDashboard in production, you should put
+    # it behind authentication and allow only admins to access it.
+    # If your application does not have an admins-only section yet,
+    # you can use Plug.BasicAuth to set up some basic authentication
+    # as long as you are also using SSL (which you should anyway).
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through :browser
+
+      live_dashboard "/dashboard", metrics: MatdoriWeb.Telemetry
+      forward "/mailbox", Plug.Swoosh.MailboxPreview
+    end
+  end
+end

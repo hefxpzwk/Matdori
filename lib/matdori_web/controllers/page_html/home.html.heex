@@ -1,0 +1,22 @@
+<Layouts.app flash={@flash} current_scope={%{}}>
+  <section class="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+    <h1 class="text-2xl font-semibold text-zinc-900">Matdori</h1>
+    <p class="mt-2 text-zinc-600">
+      오늘의 X 게시글을 실시간으로 함께 토론하는 방입니다.
+    </p>
+    <div class="mt-6 flex gap-3">
+      <a
+        href={~p"/rooms/latest"}
+        class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
+      >
+        최신 방 입장
+      </a>
+      <a
+        href={~p"/admin/today"}
+        class="rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700"
+      >
+        관리자
+      </a>
+    </div>
+  </section>
+</Layouts.app>
