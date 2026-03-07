@@ -11,7 +11,15 @@ defmodule MatdoriWeb.AuthController do
     end
   end
 
-  def request(conn, _params), do: conn
+  def request(conn, _params) do
+    if conn.halted or conn.state != :unset do
+      conn
+    else
+      conn
+      |> put_flash(:error, "지원하지 않는 로그인 방식입니다.")
+      |> redirect(to: ~p"/login")
+    end
+  end
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     return_to = get_session(conn, :user_return_to) || ~p"/"

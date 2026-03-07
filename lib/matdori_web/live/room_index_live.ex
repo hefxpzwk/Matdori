@@ -15,6 +15,8 @@ defmodule MatdoriWeb.RoomIndexLive do
      socket
      |> assign(:posts, [])
      |> assign(:display_name, session["display_name"])
+     |> assign(:email, session["google_email"])
+     |> assign(:avatar_url, session["google_avatar"])
      |> assign(:authenticated, authenticated)
      |> assign(:embed_filter, "all")
      |> assign(:sort, "latest")}
@@ -41,19 +43,29 @@ defmodule MatdoriWeb.RoomIndexLive do
     ~H"""
     <Layouts.app
       flash={@flash}
-      current_scope={%{display_name: @display_name, authenticated: @authenticated}}
+      current_scope={
+        %{
+          display_name: @display_name,
+          email: @email,
+          avatar_url: @avatar_url,
+          authenticated: @authenticated
+        }
+      }
     >
-      <section
-        id="room-list"
-        class="space-y-3 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"
-      >
-        <div class="flex items-center justify-between">
-          <h1 class="text-xl font-semibold text-zinc-900">만들어진 방 목록</h1>
+      <section id="room-list" class="mat-surface space-y-4 p-6 sm:p-8">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Community Rooms
+            </p>
+            <h1 class="mt-1 text-2xl font-black tracking-tight text-slate-900">만들어진 방 목록</h1>
+          </div>
+
           <%= if @authenticated do %>
             <.link
               id="go-share-page"
               navigate={~p"/"}
-              class="rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+              class="mat-btn-primary"
             >
               새 방 만들기
             </.link>
@@ -61,7 +73,7 @@ defmodule MatdoriWeb.RoomIndexLive do
             <.link
               id="go-login-page"
               navigate={~p"/login"}
-              class="rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+              class="mat-btn-secondary"
             >
               로그인
             </.link>
@@ -70,10 +82,10 @@ defmodule MatdoriWeb.RoomIndexLive do
 
         <div
           id="room-list-controls"
-          class="grid gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-2"
+          class="mat-panel grid gap-4 p-4 sm:grid-cols-2"
         >
           <div id="room-items" class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">임베드 필터</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">임베드 필터</p>
             <div class="flex flex-wrap gap-2">
               <.link
                 id="room-filter-all"
@@ -100,7 +112,7 @@ defmodule MatdoriWeb.RoomIndexLive do
           </div>
 
           <div class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500">정렬</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">정렬</p>
             <div class="flex flex-wrap gap-2">
               <.link
                 id="room-sort-latest"
@@ -130,29 +142,29 @@ defmodule MatdoriWeb.RoomIndexLive do
         <%= if @posts == [] do %>
           <div
             id="room-list-empty"
-            class="rounded-lg border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600"
+            class="mat-panel p-5 text-sm text-slate-600"
           >
             아직 만들어진 방이 없습니다. 메인 페이지에서 첫 방을 만들어 보세요.
           </div>
         <% else %>
-          <div class="space-y-2">
+          <div class="space-y-3">
             <%= for post <- @posts do %>
               <.link
                 id={"room-item-#{post.id}"}
                 navigate={~p"/rooms/#{post.id}"}
-                class="block rounded-lg border border-zinc-200 p-3 hover:bg-zinc-50"
+                class="mat-card group block p-4"
               >
-                <div class="flex items-center gap-2">
-                  <p class="truncate text-sm font-medium text-zinc-900">{display_title(post)}</p>
+                <div class="flex items-center gap-2.5">
+                  <p class="truncate text-sm font-bold text-slate-900">{display_title(post)}</p>
                   <span
                     id={"room-status-#{post.id}"}
-                    class="rounded-full border border-zinc-300 px-2 py-0.5 text-[11px] font-medium text-zinc-600"
+                    class="mat-pill px-2.5 py-1 text-[11px]"
                   >
                     {embed_status_label(post)}
                   </span>
                 </div>
-                <p class="mt-1 truncate text-xs text-zinc-500">{post.tweet_url}</p>
-                <div class="mt-2 flex items-center gap-3 text-xs text-zinc-600">
+                <p class="mt-1.5 truncate text-xs text-slate-500">{post.tweet_url}</p>
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-700">
                   <span id={"room-like-count-#{post.id}"}>좋아요 {post.like_count}</span>
                   <span id={"room-dislike-count-#{post.id}"}>싫어요 {post.dislike_count}</span>
                   <span id={"room-view-count-#{post.id}"}>조회수 {post.view_count}</span>
@@ -195,10 +207,10 @@ defmodule MatdoriWeb.RoomIndexLive do
 
   defp control_link_class(active?) do
     [
-      "rounded-full border px-2.5 py-1 text-xs font-medium transition",
+      "mat-control-chip",
       if(active?,
-        do: "border-zinc-700 bg-zinc-900 text-white",
-        else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+        do: "is-active",
+        else: nil
       )
     ]
   end

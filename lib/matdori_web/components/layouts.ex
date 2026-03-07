@@ -38,50 +38,106 @@ defmodule MatdoriWeb.Layouts do
       assigns
       |> assign(:authenticated, scope_authenticated(assigns[:current_scope]))
       |> assign(:display_name, scope_display_name(assigns[:current_scope]))
+      |> assign(:email, scope_email(assigns[:current_scope]))
+      |> assign(:avatar_url, scope_avatar_url(assigns[:current_scope]))
 
     ~H"""
-    <header class="border-b border-zinc-200/80 bg-white/80 backdrop-blur">
-      <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-        <a href="/" class="flex items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="28" />
-          <span class="text-sm font-semibold text-zinc-900">Matdori</span>
-        </a>
-        <nav class="flex items-center gap-3 text-sm">
-          <a href={~p"/"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-            공유하기
-          </a>
-          <a href={~p"/rooms"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-            방 목록
-          </a>
-          <%= if @authenticated and @display_name do %>
-            <a href={~p"/me"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-              마이페이지
+    <div class="mat-shell min-h-screen">
+      <section class="mx-auto w-full max-w-[1320px] px-3 py-3 sm:px-4 sm:py-4">
+        <div class="x-home-grid x-home-grid--wide">
+          <aside id="x-left-rail" class="x-left-rail">
+            <a href="/" class="x-rail-logo">
+              <img src={~p"/images/logo.svg"} width="22" />
             </a>
-            <span
-              id="header-display-name"
-              class="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700"
+
+            <div class="x-rail-main">
+              <nav class="x-rail-nav" aria-label="Main">
+                <a href={~p"/"} class="x-rail-nav-item">
+                  <.icon name="hero-home-solid" class="size-5" /> 홈
+                </a>
+                <a href={~p"/rooms"} class="x-rail-nav-item">
+                  <.icon name="hero-magnifying-glass" class="size-5" /> 탐색하기
+                </a>
+                <a href={~p"/rooms"} class="x-rail-nav-item">
+                  <.icon name="hero-bell" class="size-5" /> 알림
+                </a>
+                <a :if={@authenticated and @display_name} href={~p"/me"} class="x-rail-nav-item">
+                  <.icon name="hero-user" class="size-5" /> 프로필
+                </a>
+              </nav>
+
+              <.link id="left-create-room" navigate={~p"/"} class="x-rail-post-btn">
+                방 만들기
+              </.link>
+            </div>
+
+            <div :if={@authenticated and @display_name} class="x-rail-bottom">
+              <button
+                id="left-profile-trigger"
+                type="button"
+                class="x-profile-trigger"
+                phx-click={JS.toggle(to: "#left-profile-menu")}
+              >
+                <span class="x-profile-avatar">
+                  <img
+                    :if={@avatar_url}
+                    src={@avatar_url}
+                    alt="profile"
+                    class="x-profile-avatar-image"
+                  />
+                  <.icon :if={!@avatar_url} name="hero-user" class="size-4" />
+                </span>
+                <span class="x-profile-meta">
+                  <span id="header-display-name" class="x-profile-name">{@display_name}</span>
+                  <span :if={@email} class="x-profile-email">{@email}</span>
+                </span>
+                <.icon name="hero-chevron-up-down" class="size-4 text-slate-500" />
+              </button>
+
+              <div
+                id="left-profile-menu"
+                class="x-profile-menu hidden"
+                phx-click-away={JS.hide(to: "#left-profile-menu")}
+              >
+                <.link navigate={~p"/me"} class="x-profile-menu-item">
+                  <.icon name="hero-cog-6-tooth" class="size-4" /> 설정
+                </.link>
+                <a href={~p"/auth/logout"} class="x-profile-menu-item danger">
+                  <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> 로그아웃
+                </a>
+              </div>
+            </div>
+
+            <a
+              :if={!(@authenticated and @display_name)}
+              href={~p"/login"}
+              class="mat-btn-primary x-rail-login"
             >
-              {@display_name}
-            </span>
-            <a href={~p"/auth/logout"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-              로그아웃
-            </a>
-          <% else %>
-            <a href={~p"/login"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
               로그인
             </a>
-          <% end %>
-        </nav>
-      </div>
-    </header>
+          </aside>
 
-    <main class="px-4 py-8 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-6xl space-y-4">
-        {render_slot(@inner_block)}
-      </div>
-    </main>
+          <main id="x-main-column" class="x-main-column">
+            <header class="x-main-topbar">
+              <a href={~p"/"} class="x-main-tab">추천</a>
+              <a href={~p"/rooms"} class="x-main-tab">방 목록</a>
+              <.link :if={@authenticated and @display_name} navigate={~p"/me"} class="x-main-tab">
+                마이페이지
+              </.link>
+              <a :if={!(@authenticated and @display_name)} href={~p"/login"} class="x-main-tab">
+                로그인
+              </a>
+            </header>
 
-    <.flash_group flash={@flash} />
+            <div class="x-page-content">
+              {render_slot(@inner_block)}
+            </div>
+          </main>
+        </div>
+      </section>
+
+      <.flash_group flash={@flash} />
+    </div>
     """
   end
 
@@ -144,6 +200,14 @@ defmodule MatdoriWeb.Layouts do
   end
 
   defp scope_display_name(_), do: nil
+
+  defp scope_email(%{email: email}) when is_binary(email) and email != "", do: email
+  defp scope_email(%{"email" => email}) when is_binary(email) and email != "", do: email
+  defp scope_email(_), do: nil
+
+  defp scope_avatar_url(%{avatar_url: url}) when is_binary(url) and url != "", do: url
+  defp scope_avatar_url(%{"avatar_url" => url}) when is_binary(url) and url != "", do: url
+  defp scope_avatar_url(_), do: nil
 
   defp scope_authenticated(%{authenticated: true}), do: true
   defp scope_authenticated(%{"authenticated" => true}), do: true

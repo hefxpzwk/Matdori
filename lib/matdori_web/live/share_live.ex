@@ -15,8 +15,75 @@ defmodule MatdoriWeb.ShareLive do
      |> assign(:session_id, session["session_id"])
      |> assign(:google_uid, session["google_uid"])
      |> assign(:display_name, session["display_name"])
+     |> assign(:email, session["google_email"])
+     |> assign(:avatar_url, session["google_avatar"])
      |> assign(:authenticated, authenticated)
+     |> assign(:composer_mode, :search)
+     |> assign(:search_status, :idle)
      |> assign(:share_form, empty_share_form())}
+  end
+
+  @impl true
+  def handle_event("search_link", %{"share" => share_params}, socket) do
+    params = normalized_share_params(share_params)
+    tweet_url = String.trim(params["tweet_url"])
+
+    cond do
+      tweet_url == "" ->
+        {:noreply,
+         socket
+         |> assign(:share_form, share_form(params))
+         |> assign(:composer_mode, :search)
+         |> assign(:search_status, :idle)
+         |> put_flash(:error, "링크를 입력해 주세요")}
+
+      true ->
+        case Collab.find_post_by_url(tweet_url) do
+          {:ok, post} ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :search)
+             |> assign(:search_status, :found)
+             |> push_navigate(to: ~p"/rooms/#{post.id}")}
+
+          :not_found ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :search)
+             |> assign(:search_status, :not_found)
+             |> put_flash(:info, "기존 방이 없어 새 방을 만들 수 있습니다")}
+
+          {:error, :invalid_tweet_url} ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :search)
+             |> assign(:search_status, :idle)
+             |> put_flash(:error, "유효한 링크를 입력해 주세요")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("start_create", _params, socket) do
+    params = normalized_share_params(form_values(socket))
+
+    if String.trim(params["tweet_url"]) == "" do
+      {:noreply,
+       socket
+       |> assign(:share_form, share_form(params))
+       |> assign(:composer_mode, :search)
+       |> assign(:search_status, :idle)
+       |> put_flash(:error, "링크를 입력해 주세요")}
+    else
+      {:noreply,
+       socket
+       |> assign(:share_form, share_form(params))
+       |> assign(:composer_mode, :create)
+       |> assign(:search_status, :idle)}
+    end
   end
 
   @impl true
@@ -68,64 +135,81 @@ defmodule MatdoriWeb.ShareLive do
     ~H"""
     <Layouts.app
       flash={@flash}
-      current_scope={%{display_name: @display_name, authenticated: @authenticated}}
+      current_scope={
+        %{
+          display_name: @display_name,
+          email: @email,
+          avatar_url: @avatar_url,
+          authenticated: @authenticated
+        }
+      }
     >
-      <section id="landing-hero" class="rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <h1 class="text-2xl font-semibold text-zinc-900">좋은 글을 공유하고 함께 생각을 나누세요</h1>
-        <p class="mt-2 text-zinc-600">
-          제목과 링크를 입력하면 바로 방이 만들어지고, 다른 사람들과 그 글에 대해 이야기할 수 있습니다.
-        </p>
-      </section>
-
-      <section id="share-create" class="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-        <%= if @authenticated do %>
-          <.form for={@share_form} id="share-room-form" phx-submit="share_room" class="space-y-2">
-            <.input
-              id="share-title"
-              field={@share_form[:title]}
-              type="text"
-              label="글 제목"
-              placeholder="예: 오늘 꼭 읽어볼 글"
-              required
-            />
+      <section id="landing-hero" class="x-compose-wrap">
+        <.form
+          for={@share_form}
+          id="share-room-form"
+          phx-submit={if @composer_mode == :create, do: "share_room", else: "search_link"}
+          class="x-compose-form"
+        >
+          <div class="x-compose-primary-row">
             <.input
               id="share-link-url"
               field={@share_form[:tweet_url]}
               type="url"
-              label="링크"
-              placeholder="https://example.com/article"
-              required
+              class="x-compose-input"
+              placeholder="링크를 먼저 입력하세요"
             />
-            <button
-              id="share-room-submit"
-              type="submit"
-              class="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-            >
-              방 만들기
-            </button>
-          </.form>
-        <% else %>
-          <div id="share-login-required" class="space-y-3">
-            <p class="text-sm text-zinc-600">비로그인 사용자는 글 조회만 가능합니다.</p>
-            <.link
-              id="share-login-link"
-              navigate={~p"/login"}
-              class="inline-flex rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
+
+            <div class="x-compose-cta-row">
+              <button
+                :if={@composer_mode == :search}
+                id="share-room-search"
+                type="submit"
+                class="mat-btn-secondary"
+              >
+                검색하기
+              </button>
+
+              <button
+                :if={@composer_mode == :search and @search_status == :not_found}
+                id="share-room-start-create"
+                type="button"
+                phx-click="start_create"
+                class="mat-btn-primary"
+              >
+                새 방 만들기
+              </button>
+
+              <button
+                :if={@composer_mode == :create}
+                id="share-room-submit"
+                type="submit"
+                class="mat-btn-primary"
+              >
+                <.icon name="hero-plus" class="h-4 w-4" /> 방 만들기
+              </button>
+            </div>
+          </div>
+
+          <.input
+            :if={@composer_mode == :create}
+            id="share-title"
+            field={@share_form[:title]}
+            type="text"
+            class="x-compose-link"
+            placeholder="제목을 입력해 방 이름을 정하세요"
+            required
+          />
+        </.form>
+
+        <%= if !@authenticated do %>
+          <div id="share-login-required" class="x-login-required">
+            <p>비로그인 사용자는 조회만 가능합니다. 로그인하면 바로 방 생성이 가능합니다.</p>
+            <.link id="share-login-link" navigate={~p"/login"} class="mat-btn-primary">
               Google 로그인 후 방 만들기
             </.link>
           </div>
         <% end %>
-      </section>
-
-      <section id="landing-actions" class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <.link
-          id="go-room-list"
-          navigate={~p"/rooms"}
-          class="inline-flex rounded-lg border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        >
-          만들어진 방 보러 가기
-        </.link>
       </section>
     </Layouts.app>
     """
@@ -136,6 +220,20 @@ defmodule MatdoriWeb.ShareLive do
   end
 
   defp share_form(params) when is_map(params), do: to_form(params, as: :share)
+
+  defp normalized_share_params(params) when is_map(params) do
+    %{
+      "title" => String.trim(params["title"] || ""),
+      "tweet_url" => String.trim(params["tweet_url"] || "")
+    }
+  end
+
+  defp form_values(socket) do
+    %{
+      "title" => socket.assigns.share_form[:title].value || "",
+      "tweet_url" => socket.assigns.share_form[:tweet_url].value || ""
+    }
+  end
 
   defp logged_in?(session) when is_map(session) do
     case session["google_uid"] do

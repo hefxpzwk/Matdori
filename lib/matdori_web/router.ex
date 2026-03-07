@@ -24,10 +24,10 @@ defmodule MatdoriWeb.Router do
     pipe_through :browser
 
     get "/login", AuthController, :login
+    get "/auth/logout", AuthController, :logout
     get "/auth/:provider", AuthController, :request
     get "/auth/:provider/callback", AuthController, :callback
     post "/auth/:provider/callback", AuthController, :callback
-    get "/auth/logout", AuthController, :logout
   end
 
   scope "/", MatdoriWeb do

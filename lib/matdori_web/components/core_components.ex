@@ -56,23 +56,27 @@ defmodule MatdoriWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="mb-3 w-[22rem] max-w-[calc(100vw-2rem)]"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-start gap-3 rounded-xl border p-3.5 shadow-lg backdrop-blur-md",
+        @kind == :info && "border-slate-300 bg-white text-slate-800",
+        @kind == :error && "border-rose-300 bg-rose-50 text-rose-700"
       ]}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
         <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+          <p :if={@title} class="text-sm font-bold">{@title}</p>
+          <p class="text-sm font-medium">{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="group self-start cursor-pointer rounded-md p-0.5 hover:bg-white/60"
+          aria-label={gettext("close")}
+        >
+          <.icon name="hero-x-mark" class="size-5 opacity-45 group-hover:opacity-75" />
         </button>
       </div>
     </div>
@@ -94,11 +98,16 @@ defmodule MatdoriWeb.CoreComponents do
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{
+      "primary" =>
+        "inline-flex items-center justify-center rounded-xl border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-slate-400/30 transition hover:-translate-y-0.5 hover:bg-black",
+      nil =>
+        "inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition hover:-translate-y-0.5 hover:bg-slate-50"
+    }
 
     assigns =
       assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
+        [Map.fetch!(variants, assigns[:variant])]
       end)
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
@@ -205,8 +214,8 @@ defmodule MatdoriWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
+    <div class="mb-3">
+      <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
         <input
           type="hidden"
           name={@name}
@@ -214,17 +223,18 @@ defmodule MatdoriWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
-          <input
-            type="checkbox"
-            id={@id}
-            name={@name}
-            value="true"
-            checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
-            {@rest}
-          />{@label}
-        </span>
+        <input
+          type="checkbox"
+          id={@id}
+          name={@name}
+          value="true"
+          checked={@checked}
+          class={
+            @class ||
+              "h-4 w-4 rounded border border-slate-300 bg-white text-slate-900 focus:ring-2 focus:ring-slate-300"
+          }
+          {@rest}
+        />{@label}
       </label>
       <.error :for={msg <- @errors}>{msg}</.error>
     </div>
@@ -233,13 +243,17 @@ defmodule MatdoriWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+    <div class="mb-3">
+      <label class="block">
+        <span :if={@label} class="mb-1.5 block text-sm font-semibold text-slate-700">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[
+            @class ||
+              "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-500",
+            @errors != [] && (@error_class || "border-rose-400 bg-rose-50")
+          ]}
           multiple={@multiple}
           {@rest}
         >
@@ -254,15 +268,16 @@ defmodule MatdoriWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+    <div class="mb-3">
+      <label class="block">
+        <span :if={@label} class="mb-1.5 block text-sm font-semibold text-slate-700">{@label}</span>
         <textarea
           id={@id}
           name={@name}
           class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
+            @class ||
+              "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-500",
+            @errors != [] && (@error_class || "border-rose-400 bg-rose-50")
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -275,17 +290,18 @@ defmodule MatdoriWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
-      <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+    <div class="mb-3">
+      <label class="block">
+        <span :if={@label} class="mb-1.5 block text-sm font-semibold text-slate-700">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
+            @class ||
+              "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-slate-500",
+            @errors != [] && (@error_class || "border-rose-400 bg-rose-50")
           ]}
           {@rest}
         />
@@ -298,8 +314,8 @@ defmodule MatdoriWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-rose-700">
+      <.icon name="hero-exclamation-circle" class="h-4 w-4" />
       {render_slot(@inner_block)}
     </p>
     """

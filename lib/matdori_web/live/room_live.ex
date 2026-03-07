@@ -24,6 +24,8 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:session_id, session_id)
       |> assign(:google_uid, session["google_uid"])
       |> assign(:display_name, display_name)
+      |> assign(:email, session["google_email"])
+      |> assign(:avatar_url, session["google_avatar"])
       |> assign(:color, color)
       |> assign(:authenticated, authenticated)
       |> assign(:post, nil)
@@ -407,13 +409,20 @@ defmodule MatdoriWeb.RoomLive do
     ~H"""
     <Layouts.app
       flash={@flash}
-      current_scope={%{display_name: @display_name, authenticated: @authenticated}}
+      current_scope={
+        %{
+          display_name: @display_name,
+          email: @email,
+          avatar_url: @avatar_url,
+          authenticated: @authenticated
+        }
+      }
     >
-      <section class="space-y-4" id="room-detail">
+      <section class="space-y-5" id="room-detail">
         <.link
           id="back-to-room-list"
           navigate={~p"/rooms"}
-          class="inline-flex rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+          class="mat-btn-secondary"
         >
           방 목록으로
         </.link>
@@ -424,16 +433,16 @@ defmodule MatdoriWeb.RoomLive do
             phx-hook="SnapshotCanvas"
             data-cursor-color={@color}
             data-readonly={!@authenticated}
-            class="relative rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+            class="mat-surface relative p-5 sm:p-6"
           >
-            <div class="mb-3 flex items-center justify-between">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div class="flex items-center gap-2">
-                <h1 id="room-title" class="text-lg font-semibold text-zinc-900">
+                <h1 id="room-title" class="text-xl font-black tracking-tight text-slate-900">
                   {display_title(@post)}
                 </h1>
                 <span
                   id="room-embed-status"
-                  class="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600"
+                  class="mat-pill"
                 >
                   {embed_status_label(@post)}
                 </span>
@@ -443,7 +452,7 @@ defmodule MatdoriWeb.RoomLive do
                 href={@post.tweet_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                class="text-sm font-medium text-blue-700 underline"
+                class="text-sm font-semibold text-teal-700 underline decoration-teal-300 underline-offset-4"
               >
                 원문 보기
               </a>
@@ -451,12 +460,12 @@ defmodule MatdoriWeb.RoomLive do
 
             <div
               id="room-presence-panel"
-              class="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3"
+              class="mat-panel mb-4 p-4"
             >
               <p
                 id="room-presence-count"
                 aria-live="polite"
-                class="text-sm font-semibold text-zinc-800"
+                class="text-sm font-semibold text-slate-800"
               >
                 현재 접속 {participant_count(@presence_members)}명
               </p>
@@ -464,7 +473,7 @@ defmodule MatdoriWeb.RoomLive do
                 <span
                   :for={{session_id, presence} <- @presence_members}
                   id={"room-presence-user-#{session_id}"}
-                  class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700"
+                  class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
                 >
                   <span
                     class="h-2.5 w-2.5 rounded-full"
@@ -476,7 +485,7 @@ defmodule MatdoriWeb.RoomLive do
               </div>
             </div>
 
-            <div id="room-reactions" class="mb-3 flex items-center gap-2">
+            <div id="room-reactions" class="mb-4 flex flex-wrap items-center gap-2">
               <button
                 id="like-button"
                 type="button"
@@ -484,10 +493,10 @@ defmodule MatdoriWeb.RoomLive do
                 phx-value-kind="like"
                 disabled={!@authenticated}
                 class={[
-                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition",
                   if(@liked,
-                    do: "border-emerald-300 bg-emerald-50 text-emerald-700",
-                    else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                    do: "border-emerald-400 bg-emerald-50 text-emerald-700",
+                    else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
                   ),
                   !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
@@ -503,10 +512,10 @@ defmodule MatdoriWeb.RoomLive do
                 phx-value-kind="dislike"
                 disabled={!@authenticated}
                 class={[
-                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition",
                   if(@disliked,
-                    do: "border-rose-300 bg-rose-50 text-rose-700",
-                    else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                    do: "border-rose-400 bg-rose-50 text-rose-700",
+                    else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
                   ),
                   !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
@@ -517,32 +526,33 @@ defmodule MatdoriWeb.RoomLive do
 
               <span
                 id="room-view-count"
-                class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700"
+                class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700"
               >
                 조회수 {@view_count}
               </span>
             </div>
 
-            <div :if={!@authenticated} id="room-login-required" class="mb-3 text-sm text-zinc-600">
-              비로그인 사용자는 조회만 가능합니다. <.link navigate={~p"/login"} class="underline">로그인</.link>
+            <div :if={!@authenticated} id="room-login-required" class="mb-3 text-sm text-slate-600">
+              비로그인 사용자는 조회만 가능합니다.
+              <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">로그인</.link>
               후 반응/하이라이트/댓글을 사용할 수 있어요.
             </div>
 
             <%= if @post.hidden do %>
               <div
                 id="takedown-state"
-                class="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-800"
+                class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800"
               >
                 콘텐츠를 볼 수 없습니다.
               </div>
             <% else %>
-              <div id="embed-highlight-controls" class="mb-3 flex flex-wrap items-center gap-2">
+              <div id="embed-highlight-controls" class="mb-4 flex flex-wrap items-center gap-2">
                 <button
                   id="embed-highlight-mode-toggle"
                   type="button"
                   data-highlight-overlay-toggle
                   disabled={!@authenticated}
-                  class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                  class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
                 >
                   <.icon name="hero-pencil-square" class="h-4 w-4" /> 하이라이트 선택 모드
                 </button>
@@ -551,19 +561,22 @@ defmodule MatdoriWeb.RoomLive do
                   type="button"
                   data-highlight-overlay-clear
                   disabled={!@authenticated}
-                  class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                  class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
                 >
                   <.icon name="hero-trash" class="h-4 w-4" /> 선택 초기화
                 </button>
                 <span
                   id="embed-highlight-count"
-                  class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
+                  class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
                 >
                   0개 선택됨
                 </span>
               </div>
 
-              <div id="room-embed-stage" class="relative isolate overflow-x-auto">
+              <div
+                id="room-embed-stage"
+                class="relative isolate overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/60 p-2"
+              >
                 <div id="room-embed-center-rail" class="flex min-w-full justify-center">
                   <div id="room-embed-content" class="relative w-[760px] min-w-[760px] max-w-[760px]">
                     <%= if embed_provider(@post) == :x do %>
@@ -572,7 +585,7 @@ defmodule MatdoriWeb.RoomLive do
                         phx-hook="XEmbed"
                         phx-update="ignore"
                         data-tweet-url={@post.tweet_url}
-                        class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
+                        class="min-h-24 rounded-xl border border-slate-200 bg-white p-2"
                       >
                         <blockquote class="twitter-tweet">
                           <a href={@post.tweet_url}>X 게시글</a>
@@ -580,7 +593,7 @@ defmodule MatdoriWeb.RoomLive do
                       </div>
                     <% else %>
                       <%= if embed_provider(@post) == :youtube do %>
-                        <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
                           <iframe
                             id="youtube-embed"
                             src={youtube_embed_url(@post)}
@@ -599,14 +612,14 @@ defmodule MatdoriWeb.RoomLive do
                       <% else %>
                         <div
                           id="link-preview-card"
-                          class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
+                          class="overflow-hidden rounded-xl border border-slate-200 bg-white"
                         >
                           <a
                             id="preview-card-source"
                             href={@post.tweet_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="block hover:bg-zinc-50"
+                            class="block transition hover:bg-slate-50"
                           >
                             <div class="aspect-[16/9] w-full bg-zinc-100">
                               <img
@@ -624,12 +637,14 @@ defmodule MatdoriWeb.RoomLive do
                                 이미지 없음
                               </div>
                             </div>
-                            <div class="space-y-1 p-3">
-                              <p class="truncate text-sm font-semibold text-zinc-900">
+                            <div class="space-y-1.5 p-3">
+                              <p class="truncate text-sm font-bold text-slate-900">
                                 {display_title(@post)}
                               </p>
-                              <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
-                              <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
+                              <p class="text-xs leading-relaxed text-slate-600">
+                                {preview_description(@post)}
+                              </p>
+                              <p class="truncate text-[11px] text-slate-500">{@post.tweet_url}</p>
                             </div>
                           </a>
                         </div>
@@ -638,25 +653,25 @@ defmodule MatdoriWeb.RoomLive do
 
                     <div
                       id="embed-highlight-comment-panel"
-                      class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-zinc-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm"
+                      class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-slate-300 bg-white/97 p-3 shadow-xl backdrop-blur-sm"
                     >
                       <div
                         id="embed-highlight-comment-pointer"
-                        class="absolute h-3 w-3 rotate-45 border border-zinc-200 bg-white"
+                        class="absolute h-3 w-3 rotate-45 border border-slate-300 bg-white"
                       >
                       </div>
 
                       <div class="flex items-center justify-between gap-2">
                         <p
                           id="embed-highlight-comment-meta"
-                          class="text-xs font-semibold text-zinc-700"
+                          class="text-xs font-semibold text-slate-700"
                         >
                           하이라이트
                         </p>
                         <button
                           id="embed-highlight-comment-close"
                           type="button"
-                          class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+                          class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
                         >
                           <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> 닫기
                         </button>
@@ -664,7 +679,7 @@ defmodule MatdoriWeb.RoomLive do
 
                       <p
                         id="embed-highlight-comment-readonly"
-                        class="text-sm leading-relaxed text-zinc-800"
+                        class="text-sm leading-relaxed text-slate-800"
                       >
                         아직 댓글이 없습니다.
                       </p>
@@ -672,7 +687,7 @@ defmodule MatdoriWeb.RoomLive do
                       <div id="embed-highlight-comment-editor" class="hidden space-y-2">
                         <label
                           for="embed-highlight-comment-input"
-                          class="text-xs font-medium text-zinc-600"
+                          class="text-xs font-medium text-slate-600"
                         >
                           이 하이라이트에 남길 코멘트
                         </label>
@@ -680,14 +695,14 @@ defmodule MatdoriWeb.RoomLive do
                           id="embed-highlight-comment-input"
                           rows="3"
                           maxlength="240"
-                          class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-blue-400"
+                          class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-400"
                           placeholder="이 하이라이트의 의미를 남겨보세요"
                         ></textarea>
                         <div class="flex items-center justify-end gap-2">
                           <button
                             id="embed-highlight-comment-save"
                             type="button"
-                            class="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                            class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
                           >
                             <.icon name="hero-check" class="h-3.5 w-3.5" /> 댓글 저장
                           </button>
@@ -720,7 +735,7 @@ defmodule MatdoriWeb.RoomLive do
                   </div>
                 </div>
 
-                <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-zinc-500">
+                <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-slate-500">
                   임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
                 </p>
               </div>
@@ -737,7 +752,7 @@ defmodule MatdoriWeb.RoomLive do
         <% else %>
           <div
             id="empty-state"
-            class="rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-700 shadow-sm"
+            class="mat-surface p-6 text-slate-700"
           >
             방을 찾을 수 없습니다. 방 목록에서 다시 선택해 주세요.
           </div>

@@ -234,6 +234,17 @@ defmodule Matdori.Collab do
     end
   end
 
+  def find_post_by_url(url) when is_binary(url) do
+    with {:ok, normalized_url, _tweet_id} <- normalize_share_tweet_url(url) do
+      case Repo.get_by(Post, tweet_url: normalized_url, hidden: false) do
+        nil -> :not_found
+        post -> {:ok, Repo.preload(post, :current_snapshot)}
+      end
+    end
+  end
+
+  def find_post_by_url(_), do: {:error, :invalid_tweet_url}
+
   def get_snapshot(post_id, version) do
     Repo.one(
       from s in PostSnapshot,
