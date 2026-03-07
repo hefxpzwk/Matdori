@@ -16,8 +16,13 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
 
+    assert has_element?(view, "#room-collab-stage[phx-hook='SnapshotCanvas']")
+    assert has_element?(view, "#room-remote-cursors[phx-hook='RemoteCursors']")
+    assert has_element?(view, "#room-presence-count", "현재 접속 1명")
     assert has_element?(view, "#room-embed-status")
+    assert has_element?(view, "#room-view-count", "조회수 1")
     assert render(view) =~ "임베드 가능"
+    assert render(view) =~ "조회수"
     assert has_element?(view, "#tweet-embed")
     refute has_element?(view, "#link-card-list")
     refute has_element?(view, "#youtube-embed")
@@ -127,6 +132,23 @@ defmodule MatdoriWeb.RoomLiveTest do
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
 
+    presence_diff = %Phoenix.Socket.Broadcast{
+      topic: "presence:test",
+      event: "presence_diff",
+      payload: %{}
+    }
+
+    send(view_a.pid, presence_diff)
+    send(view_b.pid, presence_diff)
+    send(view_a.pid, {:room_refresh, post.id})
+    send(view_b.pid, {:room_refresh, post.id})
+
+    assert has_element?(view_a, "#room-view-count", "조회수 2")
+    assert has_element?(view_b, "#room-view-count", "조회수 2")
+    assert has_element?(view_a, "#room-presence-count", "현재 접속 2명")
+    assert has_element?(view_b, "#room-presence-count", "현재 접속 2명")
+    assert has_element?(view_a, "#room-presence-user-session-a")
+    assert has_element?(view_a, "#room-presence-user-session-b")
     assert has_element?(view_a, "#like-count", "0")
     assert has_element?(view_a, "#dislike-count", "0")
 

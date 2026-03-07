@@ -11,11 +11,15 @@ defmodule MatdoriWeb.RoomLive do
 
   @impl true
   def mount(_params, session, socket) do
+    session_id = session["session_id"]
+    display_name = session["display_name"]
+    color = unique_cursor_color(session_id, session["color"])
+
     socket =
       socket
-      |> assign(:session_id, session["session_id"])
-      |> assign(:display_name, session["display_name"])
-      |> assign(:color, session["color"])
+      |> assign(:session_id, session_id)
+      |> assign(:display_name, display_name)
+      |> assign(:color, color)
       |> assign(:post, nil)
       |> assign(:snapshot, nil)
       |> assign(:snapshot_versions, [])
@@ -25,9 +29,10 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:selected_highlight_id, nil)
       |> assign(:like_count, 0)
       |> assign(:dislike_count, 0)
+      |> assign(:view_count, 0)
       |> assign(:liked, false)
       |> assign(:disliked, false)
-      |> assign(:presences, %{})
+      |> assign(:presence_members, %{})
       |> assign(:privacy_notice_open, true)
       |> assign(:room_identifier, nil)
       |> assign(:room_path, ~p"/rooms")
@@ -157,8 +162,17 @@ defmodule MatdoriWeb.RoomLive do
     with :ok <- RateLimiter.allow?(socket.assigns.session_id, :toggle_reaction, @action_limit),
          %{id: post_id} <- socket.assigns.post,
          {:ok, _} <- Collab.toggle_reaction(post_id, socket.assigns.session_id, kind) do
-      broadcast_refresh(socket)
-      {:noreply, reload_current_room(socket)}
+      metrics = room_metrics(post_id)
+
+      broadcast_room_metrics(post_id, metrics)
+
+      {:noreply,
+       socket
+       |> assign(:like_count, metrics.like_count)
+       |> assign(:dislike_count, metrics.dislike_count)
+       |> assign(:view_count, metrics.view_count)
+       |> assign(:liked, Collab.reacted_by?(post_id, socket.assigns.session_id, "like"))
+       |> assign(:disliked, Collab.reacted_by?(post_id, socket.assigns.session_id, "dislike"))}
     else
       {:error, :rate_limited} ->
         {:noreply, put_flash(socket, :error, "너무 빠르게 클릭하고 있습니다.")}
@@ -220,12 +234,27 @@ defmodule MatdoriWeb.RoomLive do
     {:noreply, reload_current_room(socket)}
   end
 
+  def handle_info({:room_metrics, post_id, metrics}, socket) do
+    if socket.assigns.post && socket.assigns.post.id == post_id do
+      {:noreply,
+       socket
+       |> assign(:like_count, metrics.like_count)
+       |> assign(:dislike_count, metrics.dislike_count)
+       |> assign(:view_count, metrics.view_count)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
     if socket.assigns.post do
       presences = Presence.list(presence_topic(socket.assigns.post.id))
+      presence_members = presence_members_from_presences(presences)
 
       {:noreply,
-       push_event(socket, "presence_state", %{presences: presences, me: socket.assigns.session_id})}
+       socket
+       |> maybe_assign_presence_members(presence_members)
+       |> push_event("presence_state", %{presences: presences, me: socket.assigns.session_id})}
     else
       {:noreply, socket}
     end
@@ -245,7 +274,11 @@ defmodule MatdoriWeb.RoomLive do
         </.link>
 
         <%= if @post do %>
-          <article class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <article
+            id="room-collab-stage"
+            phx-hook="SnapshotCanvas"
+            class="relative rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
+          >
             <div class="mb-3 flex items-center justify-between">
               <div class="flex items-center gap-2">
                 <h1 id="room-title" class="text-lg font-semibold text-zinc-900">
@@ -267,6 +300,33 @@ defmodule MatdoriWeb.RoomLive do
               >
                 원문 보기
               </a>
+            </div>
+
+            <div
+              id="room-presence-panel"
+              class="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3"
+            >
+              <p
+                id="room-presence-count"
+                aria-live="polite"
+                class="text-sm font-semibold text-zinc-800"
+              >
+                현재 접속 {participant_count(@presence_members)}명
+              </p>
+              <div id="room-presence-list" class="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  :for={{session_id, presence} <- @presence_members}
+                  id={"room-presence-user-#{session_id}"}
+                  class="inline-flex items-center gap-2 rounded-full border border-zinc-300 bg-white px-2.5 py-1 text-xs text-zinc-700"
+                >
+                  <span
+                    class="h-2.5 w-2.5 rounded-full"
+                    style={"background-color: #{presence_color(presence)}"}
+                  >
+                  </span>
+                  {presence_label(presence, session_id, @session_id)}
+                </span>
+              </div>
             </div>
 
             <div id="room-reactions" class="mb-3 flex items-center gap-2">
@@ -303,6 +363,13 @@ defmodule MatdoriWeb.RoomLive do
                 <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> 싫어요
                 <span id="dislike-count">{@dislike_count}</span>
               </button>
+
+              <span
+                id="room-view-count"
+                class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700"
+              >
+                조회수 {@view_count}
+              </span>
             </div>
 
             <%= if @post.hidden do %>
@@ -386,6 +453,14 @@ defmodule MatdoriWeb.RoomLive do
                 <% end %>
               <% end %>
             <% end %>
+
+            <div
+              id="room-remote-cursors"
+              phx-hook="RemoteCursors"
+              phx-update="ignore"
+              class="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-2xl"
+            >
+            </div>
           </article>
         <% else %>
           <div
@@ -415,12 +490,19 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:highlights, [])
         |> assign(:like_count, 0)
         |> assign(:dislike_count, 0)
+        |> assign(:view_count, 0)
         |> assign(:liked, false)
         |> assign(:disliked, false)
-        |> assign(:presences, %{})
+        |> assign(:presence_members, %{})
 
       post ->
-        :ok = Collab.register_view(post.id, socket.assigns.session_id)
+        view_status = Collab.register_view_with_status(post.id, socket.assigns.session_id)
+
+        metrics = room_metrics(post.id)
+
+        if view_status == :inserted do
+          broadcast_room_metrics(post.id, metrics)
+        end
 
         version = selected_version || (post.current_snapshot && post.current_snapshot.version)
         active_snapshot = resolve_snapshot(post, version)
@@ -445,11 +527,12 @@ defmodule MatdoriWeb.RoomLive do
           :segments,
           build_segments((active_snapshot && active_snapshot.normalized_text) || "", highlights)
         )
-        |> assign(:like_count, Collab.reaction_count(post.id, "like"))
-        |> assign(:dislike_count, Collab.reaction_count(post.id, "dislike"))
+        |> assign(:like_count, metrics.like_count)
+        |> assign(:dislike_count, metrics.dislike_count)
+        |> assign(:view_count, metrics.view_count)
         |> assign(:liked, Collab.reacted_by?(post.id, socket.assigns.session_id, "like"))
         |> assign(:disliked, Collab.reacted_by?(post.id, socket.assigns.session_id, "dislike"))
-        |> assign(:presences, presences)
+        |> assign(:presence_members, presence_members_from_presences(presences))
         |> push_event("presence_state", %{presences: presences, me: socket.assigns.session_id})
     end
   end
@@ -561,12 +644,134 @@ defmodule MatdoriWeb.RoomLive do
     end
   end
 
+  defp participant_count(presences) when is_map(presences), do: map_size(presences)
+  defp participant_count(_), do: 0
+
+  defp maybe_assign_presence_members(socket, presence_members) do
+    if socket.assigns.presence_members == presence_members do
+      socket
+    else
+      assign(socket, :presence_members, presence_members)
+    end
+  end
+
+  defp presence_members_from_presences(presences) when is_map(presences) do
+    Map.new(presences, fn {session_id, presence} ->
+      meta = presence_meta(presence)
+
+      {session_id,
+       %{
+         display_name: normalize_display_name(meta),
+         color: normalize_hex_color(meta_color(meta), "#64748b")
+       }}
+    end)
+  end
+
+  defp presence_members_from_presences(_presences), do: %{}
+
+  defp presence_label(presence, session_id, my_session_id) do
+    label = normalize_display_name(presence)
+
+    if session_id == my_session_id do
+      "#{label} (나)"
+    else
+      label
+    end
+  end
+
+  defp presence_color(presence) do
+    normalize_hex_color(meta_color(presence), "#64748b")
+  end
+
+  defp unique_cursor_color(session_id, _fallback)
+       when is_binary(session_id) and session_id != "" do
+    hue = :erlang.phash2(session_id, 360) / 360
+    hsl_to_hex(hue, 0.72, 0.52)
+  end
+
+  defp unique_cursor_color(_session_id, fallback), do: normalize_hex_color(fallback, "#3b82f6")
+
+  defp normalize_hex_color(value, default) do
+    if is_binary(value) and Regex.match?(~r/^#[0-9a-fA-F]{6}$/, value) do
+      value
+    else
+      default
+    end
+  end
+
+  defp hsl_to_hex(h, s, l) do
+    {r, g, b} = hsl_to_rgb(h, s, l)
+
+    "#" <>
+      Enum.map_join([r, g, b], fn channel ->
+        channel
+        |> round()
+        |> max(0)
+        |> min(255)
+        |> Integer.to_string(16)
+        |> String.pad_leading(2, "0")
+      end)
+  end
+
+  defp hsl_to_rgb(_h, s, l) when s <= 0, do: {l * 255, l * 255, l * 255}
+
+  defp hsl_to_rgb(h, s, l) do
+    q = if l < 0.5, do: l * (1 + s), else: l + s - l * s
+    p = 2 * l - q
+
+    {
+      255 * hue_to_rgb(p, q, h + 1 / 3),
+      255 * hue_to_rgb(p, q, h),
+      255 * hue_to_rgb(p, q, h - 1 / 3)
+    }
+  end
+
+  defp hue_to_rgb(p, q, t) when t < 0, do: hue_to_rgb(p, q, t + 1)
+  defp hue_to_rgb(p, q, t) when t > 1, do: hue_to_rgb(p, q, t - 1)
+
+  defp hue_to_rgb(p, q, t) do
+    cond do
+      t < 1 / 6 -> p + (q - p) * 6 * t
+      t < 1 / 2 -> q
+      t < 2 / 3 -> p + (q - p) * (2 / 3 - t) * 6
+      true -> p
+    end
+  end
+
+  defp normalize_display_name(data) do
+    case data do
+      %{display_name: name} when is_binary(name) and name != "" -> String.slice(name, 0, 30)
+      %{"display_name" => name} when is_binary(name) and name != "" -> String.slice(name, 0, 30)
+      _ -> "Guest"
+    end
+  end
+
+  defp meta_color(data) do
+    case data do
+      %{color: value} -> value
+      %{"color" => value} -> value
+      _ -> nil
+    end
+  end
+
+  defp presence_meta(%{metas: [meta | _]}), do: meta
+  defp presence_meta(%{"metas" => [meta | _]}), do: meta
+  defp presence_meta(_), do: %{}
+
   defp embed_provider(post), do: Embed.classify(post.tweet_url).provider
   defp youtube_embed_url(post), do: Embed.classify(post.tweet_url).embed_url
   defp embed_status_label(post), do: post.tweet_url |> Embed.classify() |> Embed.status_label()
 
   defp maybe_push_plain(segments, ""), do: segments
   defp maybe_push_plain(segments, text), do: segments ++ [%{type: :plain, text: text}]
+
+  defp room_metrics(post_id) do
+    %{
+      like_count: Collab.reaction_count(post_id, "like"),
+      dislike_count: Collab.reaction_count(post_id, "dislike"),
+      view_count: Collab.view_count(post_id)
+    }
+  end
 
   defp slice(graphemes, start_g, end_g) do
     graphemes
@@ -576,13 +781,29 @@ defmodule MatdoriWeb.RoomLive do
 
   defp broadcast_refresh(socket) do
     if socket.assigns.post do
-      Phoenix.PubSub.broadcast(
-        Matdori.PubSub,
-        room_topic(socket.assigns.post.id),
-        {:room_refresh, socket.assigns.post.id}
-      )
+      broadcast_room_refresh(socket.assigns.post.id)
     end
   end
+
+  defp broadcast_room_refresh(post_id) when is_integer(post_id) do
+    Phoenix.PubSub.broadcast(
+      Matdori.PubSub,
+      room_topic(post_id),
+      {:room_refresh, post_id}
+    )
+  end
+
+  defp broadcast_room_refresh(_post_id), do: :ok
+
+  defp broadcast_room_metrics(post_id, metrics) when is_integer(post_id) and is_map(metrics) do
+    Phoenix.PubSub.broadcast(
+      Matdori.PubSub,
+      room_topic(post_id),
+      {:room_metrics, post_id, metrics}
+    )
+  end
+
+  defp broadcast_room_metrics(_post_id, _metrics), do: :ok
 
   defp room_topic(post_id), do: "room:#{post_id}"
   defp presence_topic(post_id), do: "presence:#{post_id}"

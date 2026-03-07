@@ -339,16 +339,28 @@ defmodule Matdori.Collab do
   def hearted_by?(post_id, session_id), do: reacted_by?(post_id, session_id, "like")
 
   def register_view(post_id, session_id) when is_integer(post_id) and is_binary(session_id) do
-    %PostView{}
-    |> PostView.changeset(%{post_id: post_id, session_id: session_id})
-    |> Repo.insert(on_conflict: :nothing, conflict_target: [:post_id, :session_id])
-    |> case do
-      {:ok, _} -> :ok
-      {:error, _} -> :ok
-    end
+    _ = register_view_with_status(post_id, session_id)
+    :ok
   end
 
   def register_view(_post_id, _session_id), do: :ok
+
+  def register_view_with_status(post_id, session_id)
+      when is_integer(post_id) and is_binary(session_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    {inserted_rows, _} =
+      Repo.insert_all(
+        PostView,
+        [%{post_id: post_id, session_id: session_id, inserted_at: now}],
+        on_conflict: :nothing,
+        conflict_target: [:post_id, :session_id]
+      )
+
+    if inserted_rows == 1, do: :inserted, else: :existing
+  end
+
+  def register_view_with_status(_post_id, _session_id), do: :ignored
 
   def view_count(post_id) when is_integer(post_id) do
     Repo.aggregate(from(v in PostView, where: v.post_id == ^post_id), :count, :id)

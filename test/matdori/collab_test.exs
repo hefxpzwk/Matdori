@@ -76,6 +76,14 @@ defmodule Matdori.CollabTest do
     assert listed_post.view_count == 2
   end
 
+  test "register_view_with_status/2 returns inserted then existing" do
+    post = insert_post_with_snapshot()
+
+    assert :inserted = Collab.register_view_with_status(post.id, "viewer-status")
+    assert :existing = Collab.register_view_with_status(post.id, "viewer-status")
+    assert :ignored = Collab.register_view_with_status("bad", "viewer-status")
+  end
+
   test "list_posts/2 supports likes and views sorting" do
     first = insert_post_with_snapshot()
     second = insert_post_with_snapshot()

@@ -67,24 +67,39 @@ function ensureWidgetsScript() {
 
 const XEmbed = {
   async mounted() {
-    await this.renderEmbed()
+    this.lastRenderKey = null
+    this.isRendering = false
+    await this.renderEmbedIfNeeded()
   },
 
   async updated() {
-    await this.renderEmbed()
+    await this.renderEmbedIfNeeded()
   },
 
-  async renderEmbed() {
-    const tweetUrl = this.el.dataset.tweetUrl
+  async renderEmbedIfNeeded() {
+    const tweetUrl = this.el.dataset.tweetUrl || ""
     const tweetId = extractTweetId(tweetUrl)
+    const renderKey = `${tweetId || "invalid"}|${tweetUrl}`
+
+    if (this.isRendering || this.lastRenderKey === renderKey) {
+      return
+    }
+
+    this.isRendering = true
+    this.lastRenderKey = renderKey
+
+    try {
+      await this.renderEmbed(tweetUrl, tweetId)
+    } finally {
+      this.isRendering = false
+    }
+  },
+
+  async renderEmbed(tweetUrl, tweetId) {
 
     if (!tweetId) {
       this.el.innerHTML = fallbackMarkup(tweetUrl || "")
       this.el.dataset.embedStatus = "invalid-url"
-      return
-    }
-
-    if (this.el.dataset.lastTweetId === tweetId && this.el.dataset.embedStatus === "ready") {
       return
     }
 
@@ -100,7 +115,6 @@ const XEmbed = {
           dnt: true,
           align: "center",
         })
-        this.el.dataset.lastTweetId = tweetId
         this.el.dataset.embedStatus = "ready"
       } else {
         this.el.dataset.embedStatus = "widgets-unavailable"
