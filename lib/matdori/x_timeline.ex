@@ -6,13 +6,25 @@ defmodule Matdori.XTimeline do
   @placeholder_snapshot_text "텍스트 본문이 없는 게시물입니다."
 
   def fetch_recent_posts(opts \\ []) do
+    with {:ok, %{posts: posts}} <- fetch_recent_posts_page(opts) do
+      {:ok, posts}
+    end
+  end
+
+  def fetch_recent_posts_page(opts \\ []) do
     max_results = opts |> Keyword.get(:max_results, @default_max_results) |> clamp_max_results()
+    pagination_token = opts[:pagination_token]
 
     with {:ok, username} <- configured_username(opts),
          {:ok, bearer_token} <- configured_bearer_token(opts),
          {:ok, user} <- fetch_user(username, bearer_token),
-         {:ok, tweets} <- fetch_user_tweets(user.id, bearer_token, max_results) do
-      {:ok, normalize_posts(tweets, user.username, user.pinned_tweet_id)}
+         {:ok, %{tweets: tweets, next_token: next_token}} <-
+           fetch_user_tweets_page(user.id, bearer_token, max_results, pagination_token) do
+      {:ok,
+       %{
+         posts: normalize_posts(tweets, user.username, user.pinned_tweet_id),
+         next_token: next_token
+       }}
     end
   end
 
@@ -68,7 +80,7 @@ defmodule Matdori.XTimeline do
     end
   end
 
-  defp fetch_user_tweets(user_id, bearer_token, max_results) do
+  defp fetch_user_tweets_page(user_id, bearer_token, max_results, pagination_token) do
     endpoint = "#{@api_base}/users/#{user_id}/tweets"
 
     params = %{
@@ -77,12 +89,19 @@ defmodule Matdori.XTimeline do
       "tweet.fields" => "created_at"
     }
 
-    case get_json(endpoint, bearer_token, params) do
-      {:ok, %{"data" => tweets}} when is_list(tweets) ->
-        {:ok, tweets}
+    params =
+      if is_binary(pagination_token) and pagination_token != "" do
+        Map.put(params, "pagination_token", pagination_token)
+      else
+        params
+      end
 
-      {:ok, %{"data" => nil}} ->
-        {:ok, []}
+    case get_json(endpoint, bearer_token, params) do
+      {:ok, %{"data" => tweets} = payload} when is_list(tweets) ->
+        {:ok, %{tweets: tweets, next_token: extract_next_token(payload["meta"])}}
+
+      {:ok, %{"data" => nil} = payload} ->
+        {:ok, %{tweets: [], next_token: extract_next_token(payload["meta"])}}
 
       {:ok, payload} ->
         {:error, {:unexpected_timeline_response, payload}}
@@ -153,6 +172,15 @@ defmodule Matdori.XTimeline do
   end
 
   defp extract_error_detail(_), do: "unknown_x_api_error"
+
+  defp extract_next_token(%{} = meta) do
+    case meta["next_token"] do
+      token when is_binary(token) and token != "" -> token
+      _ -> nil
+    end
+  end
+
+  defp extract_next_token(_), do: nil
 
   defp clamp_max_results(value) when is_integer(value), do: value |> max(5) |> min(100)
   defp clamp_max_results(_), do: @default_max_results

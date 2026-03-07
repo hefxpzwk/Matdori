@@ -4,14 +4,99 @@ defmodule Matdori.CollabTest do
   alias Matdori.Collab
   alias Matdori.Collab.{Post, PostSnapshot}
 
-  test "toggle_heart/2 toggles and enforces one heart per session" do
+  test "toggle_reaction/3 toggles like and dislike, with single reaction per session" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} = Collab.toggle_reaction(post.id, "session-1", "like")
+    assert Collab.reaction_count(post.id, "like") == 1
+    assert Collab.reaction_count(post.id, "dislike") == 0
+    assert Collab.reacted_by?(post.id, "session-1", "like")
+
+    assert {:ok, _} = Collab.toggle_reaction(post.id, "session-1", "dislike")
+    assert Collab.reaction_count(post.id, "like") == 0
+    assert Collab.reaction_count(post.id, "dislike") == 1
+    refute Collab.reacted_by?(post.id, "session-1", "like")
+    assert Collab.reacted_by?(post.id, "session-1", "dislike")
+
+    assert {:ok, _} = Collab.toggle_reaction(post.id, "session-1", "dislike")
+    assert Collab.reaction_count(post.id, "dislike") == 0
+  end
+
+  test "toggle_heart/2 remains compatible as like wrapper" do
     post = insert_post_with_snapshot()
 
     assert {:ok, _} = Collab.toggle_heart(post.id, "session-1")
     assert Collab.heart_count(post.id) == 1
+    assert Collab.hearted_by?(post.id, "session-1")
 
     assert {:ok, _} = Collab.toggle_heart(post.id, "session-1")
     assert Collab.heart_count(post.id) == 0
+    refute Collab.hearted_by?(post.id, "session-1")
+  end
+
+  test "toggle_reaction/3 rejects invalid reaction kind" do
+    post = insert_post_with_snapshot()
+
+    assert {:error, :invalid_reaction_kind} =
+             Collab.toggle_reaction(post.id, "session-1", "smile")
+
+    assert Collab.reaction_count(post.id, "like") == 0
+    assert Collab.reaction_count(post.id, "dislike") == 0
+  end
+
+  test "list_posts/1 includes like and dislike counts" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} = Collab.toggle_reaction(post.id, "session-like", "like")
+    assert {:ok, _} = Collab.toggle_reaction(post.id, "session-dislike", "dislike")
+
+    listed_post =
+      Collab.list_posts(50)
+      |> Enum.find(&(&1.id == post.id))
+
+    assert listed_post
+    assert listed_post.like_count == 1
+    assert listed_post.dislike_count == 1
+  end
+
+  test "register_view/2 counts unique sessions only" do
+    post = insert_post_with_snapshot()
+
+    assert :ok = Collab.register_view(post.id, "viewer-1")
+    assert :ok = Collab.register_view(post.id, "viewer-1")
+    assert :ok = Collab.register_view(post.id, "viewer-2")
+
+    assert Collab.view_count(post.id) == 2
+
+    listed_post =
+      Collab.list_posts(50, sort: "views")
+      |> Enum.find(&(&1.id == post.id))
+
+    assert listed_post
+    assert listed_post.view_count == 2
+  end
+
+  test "list_posts/2 supports likes and views sorting" do
+    first = insert_post_with_snapshot()
+    second = insert_post_with_snapshot()
+
+    assert {:ok, _} = Collab.toggle_reaction(first.id, "like-1", "like")
+    assert {:ok, _} = Collab.toggle_reaction(first.id, "like-2", "like")
+    assert {:ok, _} = Collab.toggle_reaction(second.id, "like-3", "like")
+
+    likes_sorted_ids = Collab.list_posts(50, sort: "likes") |> Enum.map(& &1.id)
+
+    assert Enum.find_index(likes_sorted_ids, &(&1 == first.id)) <
+             Enum.find_index(likes_sorted_ids, &(&1 == second.id))
+
+    assert :ok = Collab.register_view(second.id, "view-1")
+    assert :ok = Collab.register_view(second.id, "view-2")
+    assert :ok = Collab.register_view(first.id, "view-3")
+
+    views_sorted_ids = Collab.list_posts(50, sort: "views") |> Enum.map(& &1.id)
+
+    assert Enum.find_index(views_sorted_ids, &(&1 == second.id)) <
+             Enum.find_index(views_sorted_ids, &(&1 == first.id))
   end
 
   test "create_highlight/2 rejects overlaps" do
@@ -108,6 +193,129 @@ defmodule Matdori.CollabTest do
     assert post.current_snapshot.version == 2
     assert post.current_snapshot.normalized_text == "두 번째 본문"
     assert Enum.map(post.snapshots, & &1.version) == [2, 1]
+  end
+
+  test "latest and list_posts include posts from any account" do
+    first_id = Integer.to_string(System.unique_integer([:positive]))
+    second_id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, %{inserted_or_updated: 2}} =
+             Collab.sync_configured_account_posts(
+               source_posts: [
+                 %{
+                   tweet_id: first_id,
+                   tweet_url: "https://x.com/someone/status/#{first_id}",
+                   snapshot_text: "first post",
+                   posted_at: ~U[2026-03-06 09:00:00Z]
+                 },
+                 %{
+                   tweet_id: second_id,
+                   tweet_url: "https://x.com/another/status/#{second_id}",
+                   snapshot_text: "second post",
+                   posted_at: ~U[2026-03-06 11:00:00Z]
+                 }
+               ],
+               session_id: "sync-any-account"
+             )
+
+    latest = Collab.get_latest_post_with_versions()
+    assert latest.tweet_id == second_id
+
+    posts = Collab.list_posts(10)
+    assert Enum.any?(posts, &(&1.tweet_id == first_id))
+    assert Enum.any?(posts, &(&1.tweet_id == second_id))
+  end
+
+  test "share_post/2 creates room from arbitrary x post URL" do
+    id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "공유 테스트",
+                 "tweet_url" => "https://twitter.com/random_user/status/#{id}?s=20",
+                 "snapshot_text" => "shared text"
+               },
+               "share-session"
+             )
+
+    assert post.tweet_id == id
+    assert post.tweet_url == "https://x.com/random_user/status/#{id}"
+    assert post.title == "공유 테스트"
+
+    loaded = Collab.get_post_with_versions(post.id)
+    assert loaded.current_snapshot.normalized_text == "shared text"
+  end
+
+  test "share_post/2 creates room from generic link" do
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "일반 링크 공유",
+                 "tweet_url" => "https://example.com/article?id=1#section"
+               },
+               "share-session"
+             )
+
+    assert post.tweet_url == "https://example.com/article?id=1"
+    assert post.tweet_id =~ "url-"
+    assert post.title == "일반 링크 공유"
+  end
+
+  test "share_post/2 creates separate rooms for different non-embed links" do
+    assert {:ok, first} =
+             Collab.share_post(
+               %{"title" => "첫 링크", "tweet_url" => "https://example.com/a"},
+               "share-session"
+             )
+
+    assert {:ok, second} =
+             Collab.share_post(
+               %{"title" => "둘째 링크", "tweet_url" => "https://example.com/b"},
+               "share-session"
+             )
+
+    assert first.id != second.id
+    assert first.tweet_id != second.tweet_id
+  end
+
+  test "share_post/2 rejects invalid url" do
+    assert {:error, :invalid_tweet_url} =
+             Collab.share_post(
+               %{"title" => "링크 에러", "tweet_url" => "not-a-url"},
+               "share-session"
+             )
+  end
+
+  test "share_post/2 rejects empty title" do
+    assert {:error, :invalid_title} =
+             Collab.share_post(
+               %{"title" => "  ", "tweet_url" => "https://x.com/user/status/100"},
+               "share-session"
+             )
+  end
+
+  test "share_post/2 does not overwrite title or chronology on re-share" do
+    id = Integer.to_string(System.unique_integer([:positive]))
+    url = "https://x.com/reuse_user/status/#{id}"
+
+    assert {:ok, first} =
+             Collab.share_post(
+               %{"title" => "첫 제목", "tweet_url" => url},
+               "share-session-1"
+             )
+
+    assert {:ok, second} =
+             Collab.share_post(
+               %{"title" => "다른 제목", "tweet_url" => url},
+               "share-session-2"
+             )
+
+    assert first.id == second.id
+
+    loaded = Collab.get_post_with_versions(first.id)
+    assert loaded.title == "첫 제목"
+    assert loaded.tweet_posted_at == first.tweet_posted_at
   end
 
   defp insert_post_with_snapshot do

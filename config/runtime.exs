@@ -23,10 +23,31 @@ end
 config :matdori, MatdoriWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+x_periodic_sync_interval_ms =
+  case System.get_env("X_PERIODIC_SYNC_INTERVAL_MS") do
+    value when is_binary(value) ->
+      case Integer.parse(value) do
+        {parsed, ""} when parsed > 0 -> parsed
+        _ -> Application.get_env(:matdori, :x_periodic_sync_interval_ms)
+      end
+
+    _ ->
+      Application.get_env(:matdori, :x_periodic_sync_interval_ms)
+  end
+
+x_periodic_sync_enabled =
+  case System.get_env("X_PERIODIC_SYNC_ENABLED") do
+    value when value in ["0", "false", "FALSE", "False"] -> false
+    value when value in ["1", "true", "TRUE", "True"] -> true
+    _ -> Application.get_env(:matdori, :x_periodic_sync_enabled)
+  end
+
 config :matdori,
   x_bearer_token: System.get_env("X_BEARER_TOKEN"),
   x_source_username:
-    System.get_env("X_SOURCE_USERNAME") || Application.get_env(:matdori, :x_source_username)
+    System.get_env("X_SOURCE_USERNAME") || Application.get_env(:matdori, :x_source_username),
+  x_periodic_sync_interval_ms: x_periodic_sync_interval_ms,
+  x_periodic_sync_enabled: x_periodic_sync_enabled
 
 if config_env() == :prod do
   database_url =

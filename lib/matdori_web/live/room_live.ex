@@ -2,6 +2,7 @@ defmodule MatdoriWeb.RoomLive do
   use MatdoriWeb, :live_view
 
   alias Matdori.Collab
+  alias Matdori.Embed
   alias Matdori.RateLimiter
   alias MatdoriWeb.Presence
 
@@ -22,25 +23,31 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:segments, [])
       |> assign(:highlights, [])
       |> assign(:selected_highlight_id, nil)
-      |> assign(:heart_count, 0)
-      |> assign(:hearted, false)
+      |> assign(:like_count, 0)
+      |> assign(:dislike_count, 0)
+      |> assign(:liked, false)
+      |> assign(:disliked, false)
       |> assign(:presences, %{})
       |> assign(:privacy_notice_open, true)
-      |> assign(:room_identifier, :latest)
-      |> assign(:room_path, ~p"/rooms/latest")
-      |> assign(:post_list, [])
-      |> assign(:source_account, Application.get_env(:matdori, :x_source_username))
+      |> assign(:room_identifier, nil)
+      |> assign(:room_path, ~p"/rooms")
 
-    {:ok, load_room(socket, :latest)}
+    {:ok, socket}
   end
 
   @impl true
   def handle_params(params, _uri, socket) do
-    room_identifier = room_identifier_from_params(params, socket.assigns.live_action)
-    version = Map.get(params, "v")
-    socket = maybe_sync_from_x(socket, room_identifier)
+    case room_identifier_from_params(params) do
+      {:post, _post_id} = room_identifier ->
+        version = Map.get(params, "v")
+        {:noreply, load_room(socket, room_identifier, version)}
 
-    {:noreply, load_room(socket, room_identifier, version)}
+      :invalid ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "방을 찾을 수 없습니다")
+         |> push_navigate(to: ~p"/rooms")}
+    end
   end
 
   @impl true
@@ -146,19 +153,26 @@ defmodule MatdoriWeb.RoomLive do
     end
   end
 
-  def handle_event("toggle_heart", _params, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :toggle_heart, @action_limit),
+  def handle_event("toggle_reaction", %{"kind" => kind}, socket) do
+    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :toggle_reaction, @action_limit),
          %{id: post_id} <- socket.assigns.post,
-         {:ok, _} <- Collab.toggle_heart(post_id, socket.assigns.session_id) do
+         {:ok, _} <- Collab.toggle_reaction(post_id, socket.assigns.session_id, kind) do
       broadcast_refresh(socket)
       {:noreply, reload_current_room(socket)}
     else
       {:error, :rate_limited} ->
         {:noreply, put_flash(socket, :error, "너무 빠르게 클릭하고 있습니다.")}
 
+      {:error, :invalid_reaction_kind} ->
+        {:noreply, put_flash(socket, :error, "지원하지 않는 반응입니다.")}
+
       _ ->
         {:noreply, put_flash(socket, :error, "하트 상태를 변경할 수 없습니다.")}
     end
+  end
+
+  def handle_event("toggle_heart", _params, socket) do
+    handle_event("toggle_reaction", %{"kind" => "like"}, socket)
   end
 
   def handle_event("submit_report", %{"report" => %{"reason" => reason}}, socket) do
@@ -221,13 +235,29 @@ defmodule MatdoriWeb.RoomLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={%{}}>
-      <section class="space-y-4" id="today-room">
+      <section class="space-y-4" id="room-detail">
+        <.link
+          id="back-to-room-list"
+          navigate={~p"/rooms"}
+          class="inline-flex rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+        >
+          방 목록으로
+        </.link>
+
         <%= if @post do %>
           <article class="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
             <div class="mb-3 flex items-center justify-between">
-              <h1 class="text-lg font-semibold text-zinc-900">
-                {if @room_identifier == :latest, do: "최신 포스트", else: "아카이브 포스트"}
-              </h1>
+              <div class="flex items-center gap-2">
+                <h1 id="room-title" class="text-lg font-semibold text-zinc-900">
+                  {display_title(@post)}
+                </h1>
+                <span
+                  id="room-embed-status"
+                  class="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600"
+                >
+                  {embed_status_label(@post)}
+                </span>
+              </div>
               <a
                 id="tweet-link"
                 href={@post.tweet_url}
@@ -235,8 +265,44 @@ defmodule MatdoriWeb.RoomLive do
                 rel="noopener noreferrer"
                 class="text-sm font-medium text-blue-700 underline"
               >
-                X 원문 보기
+                원문 보기
               </a>
+            </div>
+
+            <div id="room-reactions" class="mb-3 flex items-center gap-2">
+              <button
+                id="like-button"
+                type="button"
+                phx-click="toggle_reaction"
+                phx-value-kind="like"
+                class={[
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                  if(@liked,
+                    do: "border-emerald-300 bg-emerald-50 text-emerald-700",
+                    else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                  )
+                ]}
+              >
+                <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> 좋아요
+                <span id="like-count">{@like_count}</span>
+              </button>
+
+              <button
+                id="dislike-button"
+                type="button"
+                phx-click="toggle_reaction"
+                phx-value-kind="dislike"
+                class={[
+                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                  if(@disliked,
+                    do: "border-rose-300 bg-rose-50 text-rose-700",
+                    else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                  )
+                ]}
+              >
+                <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> 싫어요
+                <span id="dislike-count">{@dislike_count}</span>
+              </button>
             </div>
 
             <%= if @post.hidden do %>
@@ -247,20 +313,78 @@ defmodule MatdoriWeb.RoomLive do
                 콘텐츠를 볼 수 없습니다.
               </div>
             <% else %>
-              <div
-                id="tweet-embed"
-                phx-hook="XEmbed"
-                phx-update="ignore"
-                data-tweet-url={@post.tweet_url}
-                class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
-              >
-                <blockquote class="twitter-tweet">
-                  <a href={@post.tweet_url}>X 게시글</a>
-                </blockquote>
-              </div>
-              <p class="mt-2 text-xs text-zinc-500">
-                임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
-              </p>
+              <%= if embed_provider(@post) == :x do %>
+                <div
+                  id="tweet-embed"
+                  phx-hook="XEmbed"
+                  phx-update="ignore"
+                  data-tweet-url={@post.tweet_url}
+                  class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
+                >
+                  <blockquote class="twitter-tweet">
+                    <a href={@post.tweet_url}>X 게시글</a>
+                  </blockquote>
+                </div>
+                <p class="mt-2 text-xs text-zinc-500">
+                  임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
+                </p>
+              <% else %>
+                <%= if embed_provider(@post) == :youtube do %>
+                  <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                    <iframe
+                      id="youtube-embed"
+                      src={youtube_embed_url(@post)}
+                      class="w-full"
+                      style="aspect-ratio: 16 / 9;"
+                      width="1280"
+                      height="720"
+                      title={display_title(@post)}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerpolicy="strict-origin-when-cross-origin"
+                      loading="lazy"
+                      allowfullscreen
+                    >
+                    </iframe>
+                  </div>
+                <% else %>
+                  <div
+                    id="link-preview-card"
+                    class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
+                  >
+                    <a
+                      id="preview-card-source"
+                      href={@post.tweet_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="block hover:bg-zinc-50"
+                    >
+                      <div class="aspect-[16/9] w-full bg-zinc-100">
+                        <img
+                          :if={preview_image_url(@post)}
+                          id="preview-card-image"
+                          src={preview_image_url(@post)}
+                          alt={display_title(@post)}
+                          class="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        <div
+                          :if={!preview_image_url(@post)}
+                          class="flex h-full items-center justify-center text-xs text-zinc-500"
+                        >
+                          이미지 없음
+                        </div>
+                      </div>
+                      <div class="space-y-1 p-3">
+                        <p class="truncate text-sm font-semibold text-zinc-900">
+                          {display_title(@post)}
+                        </p>
+                        <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
+                        <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
+                      </div>
+                    </a>
+                  </div>
+                <% end %>
+              <% end %>
             <% end %>
           </article>
         <% else %>
@@ -268,7 +392,7 @@ defmodule MatdoriWeb.RoomLive do
             id="empty-state"
             class="rounded-2xl border border-zinc-200 bg-white p-6 text-zinc-700 shadow-sm"
           >
-            아직 표시할 포스트가 없습니다. X_BEARER_TOKEN 설정을 확인하거나 관리자 페이지에서 포스트를 생성해 주세요.
+            방을 찾을 수 없습니다. 방 목록에서 다시 선택해 주세요.
           </div>
         <% end %>
       </section>
@@ -276,25 +400,28 @@ defmodule MatdoriWeb.RoomLive do
     """
   end
 
-  defp load_room(socket, room_identifier, selected_version \\ nil) do
+  defp load_room(socket, room_identifier, selected_version) do
     case fetch_post(room_identifier) do
       nil ->
         socket
         |> maybe_unsubscribe_from_previous_topics(nil)
         |> assign(:room_identifier, room_identifier)
         |> assign(:room_path, room_path(room_identifier))
-        |> assign(:post_list, Collab.list_posts())
         |> assign(:post, nil)
         |> assign(:snapshot, nil)
         |> assign(:snapshot_versions, [])
         |> assign(:selected_version, nil)
         |> assign(:segments, [])
         |> assign(:highlights, [])
-        |> assign(:heart_count, 0)
-        |> assign(:hearted, false)
+        |> assign(:like_count, 0)
+        |> assign(:dislike_count, 0)
+        |> assign(:liked, false)
+        |> assign(:disliked, false)
         |> assign(:presences, %{})
 
       post ->
+        :ok = Collab.register_view(post.id, socket.assigns.session_id)
+
         version = selected_version || (post.current_snapshot && post.current_snapshot.version)
         active_snapshot = resolve_snapshot(post, version)
         highlights = if active_snapshot, do: Collab.list_highlights(active_snapshot.id), else: []
@@ -309,7 +436,6 @@ defmodule MatdoriWeb.RoomLive do
         socket
         |> assign(:room_identifier, room_identifier)
         |> assign(:room_path, room_path(room_identifier))
-        |> assign(:post_list, Collab.list_posts())
         |> assign(:post, post)
         |> assign(:snapshot, active_snapshot)
         |> assign(:snapshot_versions, Enum.map(post.snapshots, & &1.version))
@@ -319,8 +445,10 @@ defmodule MatdoriWeb.RoomLive do
           :segments,
           build_segments((active_snapshot && active_snapshot.normalized_text) || "", highlights)
         )
-        |> assign(:heart_count, Collab.heart_count(post.id))
-        |> assign(:hearted, Collab.hearted_by?(post.id, socket.assigns.session_id))
+        |> assign(:like_count, Collab.reaction_count(post.id, "like"))
+        |> assign(:dislike_count, Collab.reaction_count(post.id, "dislike"))
+        |> assign(:liked, Collab.reacted_by?(post.id, socket.assigns.session_id, "like"))
+        |> assign(:disliked, Collab.reacted_by?(post.id, socket.assigns.session_id, "dislike"))
         |> assign(:presences, presences)
         |> push_event("presence_state", %{presences: presences, me: socket.assigns.session_id})
     end
@@ -330,39 +458,20 @@ defmodule MatdoriWeb.RoomLive do
     load_room(socket, socket.assigns.room_identifier, socket.assigns.selected_version)
   end
 
-  defp room_identifier_from_params(%{"post_id" => post_id}, _live_action) do
+  defp room_identifier_from_params(%{"post_id" => post_id}) do
     case Integer.parse(post_id) do
       {parsed, ""} -> {:post, parsed}
-      _ -> :latest
+      _ -> :invalid
     end
   end
 
-  defp room_identifier_from_params(_params, _live_action), do: :latest
+  defp room_identifier_from_params(_params), do: :invalid
 
-  defp fetch_post(:latest), do: Collab.get_latest_post_with_versions()
   defp fetch_post({:post, post_id}), do: Collab.get_post_with_versions(post_id)
 
-  defp room_path(:latest), do: ~p"/rooms/latest"
   defp room_path({:post, post_id}), do: ~p"/rooms/#{post_id}"
 
   defp room_path_with_version(path, version), do: path <> "?v=#{version}"
-
-  defp maybe_sync_from_x(socket, :latest) do
-    case RateLimiter.allow?("system:x-sync", :sync_latest_posts, 1, :minute) do
-      :ok ->
-        case Collab.sync_configured_account_posts(session_id: socket.assigns.session_id) do
-          {:ok, _summary} -> socket
-          {:error, :missing_x_bearer_token} -> socket
-          {:error, :missing_x_source_username} -> socket
-          {:error, _reason} -> socket
-        end
-
-      {:error, :rate_limited} ->
-        socket
-    end
-  end
-
-  defp maybe_sync_from_x(socket, _room_identifier), do: socket
 
   defp maybe_subscribe_to_topics(socket, post) do
     previous_post_id = socket.assigns.post && socket.assigns.post.id
@@ -430,6 +539,31 @@ defmodule MatdoriWeb.RoomLive do
 
     maybe_push_plain(segments, tail)
   end
+
+  defp display_title(post) do
+    case String.trim(post.title || "") do
+      "" -> "제목 없는 공유"
+      title -> title
+    end
+  end
+
+  defp preview_description(post) do
+    case String.trim(post.preview_description || "") do
+      "" -> "원문 링크를 열어 자세한 내용을 확인하세요."
+      value -> value
+    end
+  end
+
+  defp preview_image_url(post) do
+    case String.trim(post.preview_image_url || "") do
+      "" -> nil
+      value -> value
+    end
+  end
+
+  defp embed_provider(post), do: Embed.classify(post.tweet_url).provider
+  defp youtube_embed_url(post), do: Embed.classify(post.tweet_url).embed_url
+  defp embed_status_label(post), do: post.tweet_url |> Embed.classify() |> Embed.status_label()
 
   defp maybe_push_plain(segments, ""), do: segments
   defp maybe_push_plain(segments, text), do: segments ++ [%{type: :plain, text: text}]

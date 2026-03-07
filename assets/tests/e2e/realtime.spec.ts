@@ -1,17 +1,22 @@
 import { expect, test } from "@playwright/test"
 
-test("two participants can open latest room", async ({ browser }) => {
+test("two participants can open shared room", async ({ browser }) => {
   const contextA = await browser.newContext()
   const contextB = await browser.newContext()
   const pageA = await contextA.newPage()
   const pageB = await contextB.newPage()
 
-  await Promise.all([pageA.goto("/rooms/latest"), pageB.goto("/rooms/latest")])
+  await Promise.all([pageA.goto("/rooms"), pageB.goto("/rooms")])
+
+  await Promise.all([
+    pageA.locator('[id^="room-item-"]').first().click(),
+    pageB.locator('[id^="room-item-"]').first().click()
+  ])
 
   await expect(pageA.locator("#tweet-link")).toBeVisible()
   await expect(pageB.locator("#tweet-link")).toBeVisible()
-  await expect(pageA.locator("#tweet-embed")).toBeVisible()
-  await expect(pageB.locator("#tweet-embed")).toBeVisible()
+  await expect(pageA.locator("#room-embed-status")).toBeVisible()
+  await expect(pageB.locator("#room-embed-status")).toBeVisible()
 
   await contextA.close()
   await contextB.close()
@@ -23,11 +28,11 @@ test("embed failure fallback keeps room usable", async ({ browser }) => {
   await context.route("**/syndication.twitter.com/**", (route) => route.abort())
 
   const page = await context.newPage()
-  await page.goto("/rooms/latest")
+  await page.goto("/rooms")
+  await page.locator('[id^="room-item-"]').first().click()
 
   await expect(page.locator("#tweet-link")).toBeVisible()
-  await expect(page.locator("#tweet-embed")).toBeVisible()
-  await expect(page.locator("text=임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.")).toBeVisible()
+  await expect(page.locator("#room-embed-status")).toBeVisible()
 
   await context.close()
 })

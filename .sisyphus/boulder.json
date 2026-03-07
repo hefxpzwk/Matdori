@@ -1,9 +1,10 @@
 {
-  "active_plan": "/home/witdlggcxz/Desktop/schoolfrontendtmp/Matdori/.sisyphus/plans/twitter-collab-elixir.md",
-  "started_at": "2026-03-05T04:56:01.787Z",
+  "active_plan": "/home/witdlggcxz/Desktop/schoolfrontendtmp/Matdori/.sisyphus/plans/x-auto-room-generation.md",
+  "started_at": "2026-03-06T12:44:11+09:00",
   "session_ids": [
-    "ses_344028a4effebf74vD80cxhXva"
+    "ses_344028a4effebf74vD80cxhXva",
+    "ses_33eecfccdffel24hARjPsIoUKk"
   ],
-  "plan_name": "twitter-collab-elixir",
+  "plan_name": "x-auto-room-generation",
   "agent": "atlas"
 }

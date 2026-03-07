@@ -6,6 +6,7 @@ defmodule Matdori.Collab.PostHeart do
 
   schema "post_hearts" do
     field :session_id, :string
+    field :kind, :string, default: "like"
 
     belongs_to :post, Post
 
@@ -14,8 +15,10 @@ defmodule Matdori.Collab.PostHeart do
 
   def changeset(heart, attrs) do
     heart
-    |> cast(attrs, [:post_id, :session_id])
-    |> validate_required([:post_id, :session_id])
+    |> cast(attrs, [:post_id, :session_id, :kind])
+    |> validate_required([:post_id, :session_id, :kind])
+    |> validate_inclusion(:kind, ["like", "dislike"])
     |> unique_constraint([:post_id, :session_id])
+    |> check_constraint(:kind, name: :post_hearts_kind_check)
   end
 end

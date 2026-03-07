@@ -42,11 +42,11 @@ defmodule MatdoriWeb.Layouts do
           <span class="text-sm font-semibold text-zinc-900">Matdori</span>
         </a>
         <nav class="flex items-center gap-3 text-sm">
-          <a href={~p"/rooms/today"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-            Today Room
+          <a href={~p"/"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
+            공유하기
           </a>
-          <a href={~p"/admin/today"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
-            Admin
+          <a href={~p"/rooms"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
+            방 목록
           </a>
         </nav>
       </div>

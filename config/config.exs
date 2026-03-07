@@ -12,6 +12,9 @@ config :matdori,
   generators: [timestamp_type: :utc_datetime]
 
 config :matdori, :x_source_username, "bbiribarabu"
+config :matdori, :x_periodic_sync_interval_ms, 60_000
+config :matdori, :x_periodic_sync_enabled, false
+config :matdori, :link_preview_enabled, true
 
 # Configure the endpoint
 config :matdori, MatdoriWeb.Endpoint,

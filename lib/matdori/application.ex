@@ -20,6 +20,13 @@ defmodule Matdori.Application do
       MatdoriWeb.Endpoint
     ]
 
+    children =
+      if Application.get_env(:matdori, :x_periodic_sync_enabled, true) do
+        List.insert_at(children, -1, Matdori.XRoomSyncWorker)
+      else
+        children
+      end
+
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Matdori.Supervisor]

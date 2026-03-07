@@ -19,12 +19,9 @@ defmodule MatdoriWeb.Router do
   scope "/", MatdoriWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
-    live "/rooms/latest", RoomLive, :latest
-    live "/rooms/today", RoomLive, :latest
+    live "/", ShareLive, :index
+    live "/rooms", RoomIndexLive, :index
     live "/rooms/:post_id", RoomLive, :show
-    live "/admin/today", AdminTodayLive
-    live "/admin/reports", AdminReportsLive
   end
 
   # Other scopes may use custom stacks.
