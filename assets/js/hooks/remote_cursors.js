@@ -1,5 +1,5 @@
-const NOTE_FADE_DELAY_MS = 1800
-const NOTE_FADE_DURATION_MS = 2800
+const NOTE_FADE_DELAY_MS = 0
+const NOTE_FADE_DURATION_MS = 300
 
 function normalizeColor(value, fallback = "#3b82f6") {
   return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : fallback
@@ -33,6 +33,14 @@ function normalizeNoteText(value) {
 function normalizeTimestamp(value) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0
+}
+
+function readMeta(presence) {
+  if (!presence || !Array.isArray(presence.metas) || presence.metas.length === 0) {
+    return null
+  }
+
+  return presence.metas[0]
 }
 
 function buildCursorNode(sessionId) {
@@ -92,7 +100,9 @@ function buildCursorNode(sessionId) {
   noteBubble.style.border = "1px solid rgba(255,255,255,0.6)"
   noteBubble.style.boxShadow = "0 8px 24px rgba(15, 23, 42, 0.24)"
   noteBubble.style.backdropFilter = "blur(4px)"
+  noteBubble.style.opacity = "1"
   noteBubble.style.transform = "translateY(0px)"
+  noteBubble.style.transition = "none"
 
   wrap.appendChild(pointerRow)
   wrap.appendChild(noteBubble)
@@ -106,66 +116,101 @@ function buildCursorNode(sessionId) {
     noteBubble,
     noteMode: "clear",
     noteUpdatedAtMs: 0,
+    noteText: "",
+    noteFadeStartTimer: null,
+    noteFadeEndTimer: null,
   }
-}
-
-function readMeta(presence) {
-  if (!presence || !Array.isArray(presence.metas) || presence.metas.length === 0) {
-    return null
-  }
-
-  return presence.metas[0]
-}
-
-function noteOpacity(mode, updatedAtMs) {
-  if (mode === "typing") {
-    return 1
-  }
-
-  if (mode !== "final") {
-    return 0
-  }
-
-  const elapsed = Date.now() - updatedAtMs
-  if (elapsed <= NOTE_FADE_DELAY_MS) {
-    return 1
-  }
-
-  const fadeElapsed = elapsed - NOTE_FADE_DELAY_MS
-  if (fadeElapsed >= NOTE_FADE_DURATION_MS) {
-    return 0
-  }
-
-  return 1 - fadeElapsed / NOTE_FADE_DURATION_MS
 }
 
 const RemoteCursors = {
   mounted() {
     this.cursorNodes = new Map()
 
-    this.refreshNoteFade = () => {
-      this.cursorNodes.forEach((parts) => {
-        if (parts.noteMode === "clear") {
-          return
-        }
+    this.clearNoteTimers = (parts) => {
+      if (parts.noteFadeStartTimer) {
+        window.clearTimeout(parts.noteFadeStartTimer)
+        parts.noteFadeStartTimer = null
+      }
 
-        const opacity = noteOpacity(parts.noteMode, parts.noteUpdatedAtMs)
-        if (opacity <= 0) {
-          parts.noteBubble.style.display = "none"
-          parts.noteBubble.textContent = ""
-          parts.noteBubble.style.transform = "translateY(0px)"
-          parts.pointerRow.style.display = "flex"
-          parts.noteMode = "clear"
-          return
-        }
-
-        parts.noteBubble.style.display = "inline-block"
-        parts.noteBubble.style.opacity = opacity.toFixed(3)
-        parts.noteBubble.style.transform = `translateY(${Math.round((1 - opacity) * 14)}px)`
-      })
+      if (parts.noteFadeEndTimer) {
+        window.clearTimeout(parts.noteFadeEndTimer)
+        parts.noteFadeEndTimer = null
+      }
     }
 
-    this.fadeTimer = window.setInterval(this.refreshNoteFade, 120)
+    this.hideNoteBubble = (parts) => {
+      this.clearNoteTimers(parts)
+      parts.noteBubble.style.display = "none"
+      parts.noteBubble.style.opacity = "1"
+      parts.noteBubble.style.transform = "translateY(0px)"
+      parts.noteBubble.style.transition = "none"
+      parts.noteBubble.textContent = ""
+      parts.noteMode = "clear"
+      parts.noteUpdatedAtMs = 0
+      parts.noteText = ""
+      parts.pointerRow.style.display = "flex"
+    }
+
+    this.showTypingBubble = (parts, text, updatedAtMs) => {
+      this.clearNoteTimers(parts)
+      parts.noteMode = "typing"
+      parts.noteUpdatedAtMs = updatedAtMs
+      parts.noteText = text
+      parts.pointerRow.style.display = "none"
+      parts.noteBubble.style.display = "inline-block"
+      parts.noteBubble.style.transition = "none"
+      parts.noteBubble.textContent = text
+      parts.noteBubble.style.opacity = "1"
+      parts.noteBubble.style.transform = "translateY(0px)"
+    }
+
+    this.showFinalBubble = (parts, text, updatedAtMs) => {
+      const sameFinalState =
+        parts.noteMode === "final" && parts.noteUpdatedAtMs === updatedAtMs && parts.noteText === text
+
+      if (sameFinalState) {
+        return
+      }
+
+      this.clearNoteTimers(parts)
+      parts.noteMode = "final"
+      parts.noteUpdatedAtMs = updatedAtMs
+      parts.noteText = text
+      parts.pointerRow.style.display = "none"
+      parts.noteBubble.style.display = "inline-block"
+      parts.noteBubble.textContent = text
+      parts.noteBubble.style.transition = "none"
+      parts.noteBubble.style.opacity = "1"
+      parts.noteBubble.style.transform = "translateY(0px)"
+
+      parts.noteFadeStartTimer = window.setTimeout(() => {
+        parts.noteFadeStartTimer = null
+
+        if (parts.noteMode !== "final" || parts.noteUpdatedAtMs !== updatedAtMs) {
+          return
+        }
+
+        parts.noteBubble.style.transition =
+          "opacity 300ms cubic-bezier(0.2, 0.85, 0.28, 1), transform 300ms cubic-bezier(0.2, 0.85, 0.28, 1)"
+
+        window.requestAnimationFrame(() => {
+          if (parts.noteMode !== "final" || parts.noteUpdatedAtMs !== updatedAtMs) {
+            return
+          }
+
+          parts.noteBubble.style.opacity = "0"
+          parts.noteBubble.style.transform = "translateY(18px) scale(0.97)"
+        })
+      }, NOTE_FADE_DELAY_MS)
+
+      parts.noteFadeEndTimer = window.setTimeout(() => {
+        parts.noteFadeEndTimer = null
+
+        if (parts.noteMode === "final" && parts.noteUpdatedAtMs === updatedAtMs) {
+          this.hideNoteBubble(parts)
+        }
+      }, NOTE_FADE_DELAY_MS + NOTE_FADE_DURATION_MS + 20)
+    }
 
     this.handleEvent("presence_state", ({ presences, me }) => {
       const nextIds = new Set()
@@ -212,40 +257,17 @@ const RemoteCursors = {
 
         const text = normalizeNoteText(meta.cursor_note_text)
         const mode = normalizeMode(meta.cursor_note_mode)
-        const updatedAtMs = normalizeTimestamp(meta.cursor_note_updated_at_ms)
+        const safeUpdatedAt = normalizeTimestamp(meta.cursor_note_updated_at_ms) || Date.now()
 
         if (text === "" || mode === "clear") {
-          parts.noteBubble.style.display = "none"
-          parts.noteBubble.textContent = ""
-          parts.noteBubble.style.transform = "translateY(0px)"
-          parts.pointerRow.style.display = "flex"
-          parts.noteMode = "clear"
-          parts.noteUpdatedAtMs = 0
-        } else {
-          parts.noteBubble.textContent = text
-          parts.noteMode = mode
-          parts.noteUpdatedAtMs = updatedAtMs || Date.now()
+          this.hideNoteBubble(parts)
+          return
+        }
 
-          if (mode === "typing") {
-            parts.pointerRow.style.display = "none"
-            parts.noteBubble.style.display = "inline-block"
-            parts.noteBubble.style.opacity = "1"
-            parts.noteBubble.style.transform = "translateY(0px)"
-          } else {
-            parts.pointerRow.style.display = "flex"
-            const opacity = noteOpacity(mode, parts.noteUpdatedAtMs)
-            if (opacity <= 0) {
-              parts.noteBubble.style.display = "none"
-              parts.noteBubble.textContent = ""
-              parts.noteBubble.style.transform = "translateY(0px)"
-              parts.noteMode = "clear"
-              parts.noteUpdatedAtMs = 0
-            } else {
-              parts.noteBubble.style.display = "inline-block"
-              parts.noteBubble.style.opacity = opacity.toFixed(3)
-              parts.noteBubble.style.transform = `translateY(${Math.round((1 - opacity) * 14)}px)`
-            }
-          }
+        if (mode === "typing") {
+          this.showTypingBubble(parts, text, safeUpdatedAt)
+        } else {
+          this.showFinalBubble(parts, text, safeUpdatedAt)
         }
       })
 
@@ -254,6 +276,7 @@ const RemoteCursors = {
           return
         }
 
+        this.clearNoteTimers(parts)
         parts.container.remove()
         this.cursorNodes.delete(sessionId)
       })
@@ -261,13 +284,12 @@ const RemoteCursors = {
   },
 
   destroyed() {
-    if (this.fadeTimer) {
-      window.clearInterval(this.fadeTimer)
-      this.fadeTimer = null
-    }
-
     if (this.cursorNodes) {
-      this.cursorNodes.forEach((parts) => parts.container.remove())
+      this.cursorNodes.forEach((parts) => {
+        this.clearNoteTimers(parts)
+        parts.container.remove()
+      })
+
       this.cursorNodes.clear()
     }
   },

@@ -180,8 +180,6 @@ const SnapshotCanvas = {
         return
       }
 
-      this.pushCursorNote("clear", "")
-
       const input = document.createElement("input")
       input.id = "cursor-note-input"
       input.type = "text"
