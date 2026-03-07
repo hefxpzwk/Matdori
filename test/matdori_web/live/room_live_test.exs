@@ -4,6 +4,7 @@ defmodule MatdoriWeb.RoomLiveTest do
   import Phoenix.LiveViewTest
 
   alias Matdori.Collab
+  alias MatdoriWeb.Presence
 
   test "x room shows native embed status", %{conn: conn} do
     id = Integer.to_string(System.unique_integer([:positive]))
@@ -21,6 +22,11 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#room-presence-count", "현재 접속 1명")
     assert has_element?(view, "#room-embed-status")
     assert has_element?(view, "#room-view-count", "조회수 1")
+    assert has_element?(view, "#embed-highlight-mode-toggle")
+    assert has_element?(view, "#embed-highlight-clear")
+    assert has_element?(view, "#embed-highlight-count", "0개 선택됨")
+    assert has_element?(view, "#room-embed-highlight-overlay[phx-hook='EmbedHighlightOverlay']")
+    assert has_element?(view, "#room-embed-highlight-overlay[data-session-id][data-user-color]")
     assert render(view) =~ "임베드 가능"
     assert render(view) =~ "조회수"
     assert has_element?(view, "#tweet-embed")
@@ -45,6 +51,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert render(view) =~ "임베드 가능"
     assert has_element?(view, "#youtube-embed")
     assert has_element?(view, "#youtube-embed[src*='youtube.com/embed/iI5AmA9Vnhk']")
+    assert has_element?(view, "#room-embed-highlight-overlay")
     refute has_element?(view, "#tweet-embed")
     refute has_element?(view, "#link-card-list")
   end
@@ -61,6 +68,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#room-embed-status")
     assert render(view) =~ "미리보기"
     assert has_element?(view, "#link-preview-card")
+    assert has_element?(view, "#room-embed-highlight-overlay")
 
     assert has_element?(
              view,
@@ -169,5 +177,62 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view_a, "#like-count", "0")
     assert has_element?(view_a, "#dislike-count", "1")
     assert has_element?(view_b, "#like-count", "0")
+  end
+
+  test "overlay highlights are synced to presence metadata", %{conn: conn} do
+    id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, post} =
+             Collab.share_post(
+               %{"title" => "오버레이 동기화", "tweet_url" => "https://x.com/overlay_user/status/#{id}"},
+               "room-live-overlay-sync"
+             )
+
+    conn_a = init_test_session(conn, %{"session_id" => "overlay-session-a"})
+    conn_b = init_test_session(conn, %{"session_id" => "overlay-session-b"})
+
+    {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
+    {:ok, _view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
+
+    render_hook(view_a, "overlay_highlight_draft", %{
+      "zone" => %{"left" => 0.12, "top" => 0.22, "width" => 0.2, "height" => 0.15}
+    })
+
+    assert %{"overlay-session-a" => %{metas: [draft_meta | _]}} =
+             Presence.list("presence:#{post.id}")
+
+    assert draft_meta.overlay_highlight_draft.left == 0.12
+    assert draft_meta.overlay_highlight_draft.top == 0.22
+    assert draft_meta.overlay_highlight_draft.width == 0.2
+    assert draft_meta.overlay_highlight_draft.height == 0.15
+
+    render_hook(view_a, "overlay_highlights_sync", %{
+      "highlights" => [
+        %{"left" => 0.1, "top" => 0.2, "width" => 0.25, "height" => 0.3}
+      ]
+    })
+
+    assert %{"overlay-session-a" => %{metas: [meta | _]}} = Presence.list("presence:#{post.id}")
+
+    assert [zone] = meta.overlay_highlights
+    assert zone.left == 0.1
+    assert zone.top == 0.2
+    assert zone.width == 0.25
+    assert zone.height == 0.3
+    assert is_nil(meta.overlay_highlight_draft)
+
+    render_hook(view_a, "overlay_highlight_draft", %{"zone" => nil})
+
+    assert %{"overlay-session-a" => %{metas: [draft_cleared | _]}} =
+             Presence.list("presence:#{post.id}")
+
+    assert is_nil(draft_cleared.overlay_highlight_draft)
+
+    render_hook(view_a, "overlay_highlights_sync", %{"highlights" => []})
+
+    assert %{"overlay-session-a" => %{metas: [cleared_meta | _]}} =
+             Presence.list("presence:#{post.id}")
+
+    assert cleared_meta.overlay_highlights == []
   end
 end

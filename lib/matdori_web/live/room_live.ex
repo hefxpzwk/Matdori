@@ -9,6 +9,8 @@ defmodule MatdoriWeb.RoomLive do
   @cursor_limit 20
   @cursor_note_limit 30
   @cursor_note_max_len 80
+  @overlay_highlight_limit 40
+  @overlay_draft_limit 30
   @action_limit 20
 
   @impl true
@@ -103,6 +105,40 @@ defmodule MatdoriWeb.RoomLive do
 
     {:noreply, socket}
   end
+
+  def handle_event("overlay_highlights_sync", %{"highlights" => highlights}, socket) do
+    if RateLimiter.allow?(
+         socket.assigns.session_id,
+         :overlay_highlights_sync,
+         @action_limit,
+         :second
+       ) == :ok and socket.assigns.post do
+      upsert_presence_meta(socket, fn meta ->
+        meta
+        |> Map.put(:overlay_highlights, normalize_overlay_highlights(highlights))
+        |> Map.put(:overlay_highlight_draft, nil)
+      end)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("overlay_highlight_draft", %{"zone" => zone}, socket) do
+    if RateLimiter.allow?(
+         socket.assigns.session_id,
+         :overlay_highlight_draft,
+         @overlay_draft_limit,
+         :second
+       ) == :ok and socket.assigns.post do
+      upsert_presence_meta(socket, fn meta ->
+        Map.put(meta, :overlay_highlight_draft, normalize_overlay_highlight_zone(zone))
+      end)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("overlay_highlight_draft", _params, socket), do: {:noreply, socket}
 
   def handle_event("select_highlight", %{"highlight_id" => id}, socket) do
     case Integer.parse(id) do
@@ -414,78 +450,121 @@ defmodule MatdoriWeb.RoomLive do
                 콘텐츠를 볼 수 없습니다.
               </div>
             <% else %>
-              <%= if embed_provider(@post) == :x do %>
-                <div
-                  id="tweet-embed"
-                  phx-hook="XEmbed"
-                  phx-update="ignore"
-                  data-tweet-url={@post.tweet_url}
-                  class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
+              <div id="embed-highlight-controls" class="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  id="embed-highlight-mode-toggle"
+                  type="button"
+                  data-highlight-overlay-toggle
+                  class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
                 >
-                  <blockquote class="twitter-tweet">
-                    <a href={@post.tweet_url}>X 게시글</a>
-                  </blockquote>
-                </div>
-                <p class="mt-2 text-xs text-zinc-500">
-                  임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
-                </p>
-              <% else %>
-                <%= if embed_provider(@post) == :youtube do %>
-                  <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                    <iframe
-                      id="youtube-embed"
-                      src={youtube_embed_url(@post)}
-                      class="w-full"
-                      style="aspect-ratio: 16 / 9;"
-                      width="1280"
-                      height="720"
-                      title={display_title(@post)}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerpolicy="strict-origin-when-cross-origin"
-                      loading="lazy"
-                      allowfullscreen
+                  <.icon name="hero-pencil-square" class="h-4 w-4" /> 하이라이트 선택 모드
+                </button>
+                <button
+                  id="embed-highlight-clear"
+                  type="button"
+                  data-highlight-overlay-clear
+                  class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                >
+                  <.icon name="hero-trash" class="h-4 w-4" /> 선택 초기화
+                </button>
+                <span
+                  id="embed-highlight-count"
+                  class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
+                >
+                  0개 선택됨
+                </span>
+              </div>
+
+              <div id="room-embed-stage" class="relative isolate">
+                <%= if embed_provider(@post) == :x do %>
+                  <div class="space-y-2">
+                    <div
+                      id="tweet-embed"
+                      phx-hook="XEmbed"
+                      phx-update="ignore"
+                      data-tweet-url={@post.tweet_url}
+                      class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
                     >
-                    </iframe>
+                      <blockquote class="twitter-tweet">
+                        <a href={@post.tweet_url}>X 게시글</a>
+                      </blockquote>
+                    </div>
+                    <p class="text-xs text-zinc-500">
+                      임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
+                    </p>
                   </div>
                 <% else %>
-                  <div
-                    id="link-preview-card"
-                    class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
-                  >
-                    <a
-                      id="preview-card-source"
-                      href={@post.tweet_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="block hover:bg-zinc-50"
+                  <%= if embed_provider(@post) == :youtube do %>
+                    <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                      <iframe
+                        id="youtube-embed"
+                        src={youtube_embed_url(@post)}
+                        class="w-full"
+                        style="aspect-ratio: 16 / 9;"
+                        width="1280"
+                        height="720"
+                        title={display_title(@post)}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        loading="lazy"
+                        allowfullscreen
+                      >
+                      </iframe>
+                    </div>
+                  <% else %>
+                    <div
+                      id="link-preview-card"
+                      class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
                     >
-                      <div class="aspect-[16/9] w-full bg-zinc-100">
-                        <img
-                          :if={preview_image_url(@post)}
-                          id="preview-card-image"
-                          src={preview_image_url(@post)}
-                          alt={display_title(@post)}
-                          class="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                        <div
-                          :if={!preview_image_url(@post)}
-                          class="flex h-full items-center justify-center text-xs text-zinc-500"
-                        >
-                          이미지 없음
+                      <a
+                        id="preview-card-source"
+                        href={@post.tweet_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="block hover:bg-zinc-50"
+                      >
+                        <div class="aspect-[16/9] w-full bg-zinc-100">
+                          <img
+                            :if={preview_image_url(@post)}
+                            id="preview-card-image"
+                            src={preview_image_url(@post)}
+                            alt={display_title(@post)}
+                            class="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                          <div
+                            :if={!preview_image_url(@post)}
+                            class="flex h-full items-center justify-center text-xs text-zinc-500"
+                          >
+                            이미지 없음
+                          </div>
                         </div>
-                      </div>
-                      <div class="space-y-1 p-3">
-                        <p class="truncate text-sm font-semibold text-zinc-900">
-                          {display_title(@post)}
-                        </p>
-                        <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
-                        <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
-                      </div>
-                    </a>
-                  </div>
+                        <div class="space-y-1 p-3">
+                          <p class="truncate text-sm font-semibold text-zinc-900">
+                            {display_title(@post)}
+                          </p>
+                          <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
+                          <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
+                        </div>
+                      </a>
+                    </div>
+                  <% end %>
                 <% end %>
-              <% end %>
+
+                <div
+                  id="room-embed-highlight-overlay"
+                  phx-hook="EmbedHighlightOverlay"
+                  phx-update="ignore"
+                  data-stage-selector="#room-embed-stage"
+                  data-toggle-selector="#embed-highlight-mode-toggle"
+                  data-clear-selector="#embed-highlight-clear"
+                  data-count-selector="#embed-highlight-count"
+                  data-session-id={@session_id}
+                  data-user-color={@color}
+                  class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
+                >
+                </div>
+              </div>
             <% end %>
 
             <div
@@ -603,7 +682,9 @@ defmodule MatdoriWeb.RoomLive do
         cursor: %{x: 0, y: 0},
         cursor_note_text: "",
         cursor_note_mode: "clear",
-        cursor_note_updated_at_ms: 0
+        cursor_note_updated_at_ms: 0,
+        overlay_highlights: [],
+        overlay_highlight_draft: nil
       })
     end
 
@@ -827,7 +908,9 @@ defmodule MatdoriWeb.RoomLive do
       cursor: %{x: 0, y: 0},
       cursor_note_text: "",
       cursor_note_mode: "clear",
-      cursor_note_updated_at_ms: 0
+      cursor_note_updated_at_ms: 0,
+      overlay_highlights: [],
+      overlay_highlight_draft: nil
     }
   end
 
@@ -845,7 +928,10 @@ defmodule MatdoriWeb.RoomLive do
       cursor_note_text: normalize_cursor_note_text(meta_cursor_note_text(meta)),
       cursor_note_mode: mode,
       cursor_note_updated_at_ms:
-        normalize_cursor_note_updated_at_ms(meta_cursor_note_updated_at_ms(meta))
+        normalize_cursor_note_updated_at_ms(meta_cursor_note_updated_at_ms(meta)),
+      overlay_highlights: normalize_overlay_highlights(meta_overlay_highlights(meta)),
+      overlay_highlight_draft:
+        normalize_overlay_highlight_zone(meta_overlay_highlight_draft(meta))
     }
   end
 
@@ -917,6 +1003,86 @@ defmodule MatdoriWeb.RoomLive do
       %{cursor_note_updated_at_ms: value} -> value
       %{"cursor_note_updated_at_ms" => value} -> value
       _ -> 0
+    end
+  end
+
+  defp meta_overlay_highlights(data) do
+    case data do
+      %{overlay_highlights: value} -> value
+      %{"overlay_highlights" => value} -> value
+      _ -> []
+    end
+  end
+
+  defp meta_overlay_highlight_draft(data) do
+    case data do
+      %{overlay_highlight_draft: value} -> value
+      %{"overlay_highlight_draft" => value} -> value
+      _ -> nil
+    end
+  end
+
+  defp normalize_overlay_highlights(value) when is_list(value) do
+    value
+    |> Enum.reduce([], fn zone, acc ->
+      case normalize_overlay_highlight_zone(zone) do
+        nil -> acc
+        normalized -> [normalized | acc]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.take(@overlay_highlight_limit)
+  end
+
+  defp normalize_overlay_highlights(_value), do: []
+
+  defp normalize_overlay_highlight_zone(zone) when is_map(zone) do
+    with {:ok, left} <- normalize_overlay_ratio(Map.get(zone, :left) || Map.get(zone, "left")),
+         {:ok, top} <- normalize_overlay_ratio(Map.get(zone, :top) || Map.get(zone, "top")),
+         {:ok, width} <- normalize_overlay_ratio(Map.get(zone, :width) || Map.get(zone, "width")),
+         {:ok, height} <-
+           normalize_overlay_ratio(Map.get(zone, :height) || Map.get(zone, "height")) do
+      max_width = max(1.0 - left, 0.0)
+      max_height = max(1.0 - top, 0.0)
+      safe_width = min(width, max_width)
+      safe_height = min(height, max_height)
+
+      if safe_width > 0.0 and safe_height > 0.0 do
+        %{left: left, top: top, width: safe_width, height: safe_height}
+      else
+        nil
+      end
+    else
+      :error -> nil
+    end
+  end
+
+  defp normalize_overlay_highlight_zone(_zone), do: nil
+
+  defp normalize_overlay_ratio(value) when is_integer(value) do
+    {:ok, clamp_overlay_ratio(value * 1.0)}
+  end
+
+  defp normalize_overlay_ratio(value) when is_float(value) do
+    {:ok, clamp_overlay_ratio(value)}
+  end
+
+  defp normalize_overlay_ratio(value) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {parsed, ""} -> {:ok, clamp_overlay_ratio(parsed)}
+      _ -> :error
+    end
+  end
+
+  defp normalize_overlay_ratio(_value), do: :error
+
+  defp clamp_overlay_ratio(value) do
+    rounded = Float.round(value, 4)
+
+    cond do
+      rounded < 0.0 -> 0.0
+      rounded > 1.0 -> 1.0
+      true -> rounded
     end
   end
 
