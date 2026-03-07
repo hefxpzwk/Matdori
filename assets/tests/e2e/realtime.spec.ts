@@ -95,6 +95,20 @@ test("two participants can open shared room", async ({ browser }) => {
   await pageA.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.45)
   await expect(pageB.locator("#room-remote-cursors [id^='cursor-']")).toBeVisible()
 
+  await pageA.keyboard.press("/")
+  const noteInput = pageA.locator("#cursor-note-input")
+  await expect(noteInput).toBeVisible()
+  await noteInput.fill("실시간 메모 테스트")
+  await noteInput.press("Enter")
+
+  const remoteNote = pageB
+    .locator("#room-remote-cursors .cursor-note-bubble")
+    .filter({ hasText: "실시간 메모 테스트" })
+    .first()
+
+  await expect(remoteNote).toBeVisible()
+  await expect(remoteNote).toBeHidden({ timeout: 9000 })
+
   await contextA.close()
   await contextB.close()
 })

@@ -7,6 +7,8 @@ defmodule MatdoriWeb.RoomLive do
   alias MatdoriWeb.Presence
 
   @cursor_limit 20
+  @cursor_note_limit 30
+  @cursor_note_max_len 80
   @action_limit 20
 
   @impl true
@@ -63,16 +65,31 @@ defmodule MatdoriWeb.RoomLive do
   def handle_event("cursor_move", %{"x" => x, "y" => y}, socket) do
     if RateLimiter.allow?(socket.assigns.session_id, :cursor_move, @cursor_limit, :second) == :ok and
          socket.assigns.post do
-      Presence.update(
-        self(),
-        presence_topic(socket.assigns.post.id),
-        socket.assigns.session_id,
-        %{
-          cursor: %{x: x, y: y},
-          display_name: socket.assigns.display_name,
-          color: socket.assigns.color
-        }
-      )
+      upsert_presence_meta(socket, fn meta ->
+        Map.put(meta, :cursor, normalize_cursor_position(x, y, meta_cursor(meta)))
+      end)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("cursor_note", %{"mode" => mode, "text" => text} = params, socket) do
+    if RateLimiter.allow?(socket.assigns.session_id, :cursor_note, @cursor_note_limit, :second) ==
+         :ok and
+         socket.assigns.post do
+      upsert_presence_meta(socket, fn meta ->
+        cursor =
+          normalize_cursor_position(Map.get(params, "x"), Map.get(params, "y"), meta_cursor(meta))
+
+        normalized_text = normalize_cursor_note_text(text)
+        normalized_mode = normalize_cursor_note_mode(mode, normalized_text)
+
+        meta
+        |> Map.put(:cursor, cursor)
+        |> Map.put(:cursor_note_text, normalized_text)
+        |> Map.put(:cursor_note_mode, normalized_mode)
+        |> Map.put(:cursor_note_updated_at_ms, System.system_time(:millisecond))
+      end)
     end
 
     {:noreply, socket}
@@ -218,6 +235,13 @@ defmodule MatdoriWeb.RoomLive do
     if cleaned == "" do
       {:noreply, put_flash(socket, :error, "표시 이름은 비워둘 수 없습니다.")}
     else
+      if socket.assigns.post do
+        upsert_presence_meta(
+          assign(socket, :display_name, cleaned),
+          &Map.put(&1, :display_name, cleaned)
+        )
+      end
+
       {:noreply,
        socket
        |> assign(:display_name, cleaned)
@@ -277,6 +301,7 @@ defmodule MatdoriWeb.RoomLive do
           <article
             id="room-collab-stage"
             phx-hook="SnapshotCanvas"
+            data-cursor-color={@color}
             class="relative rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
           >
             <div class="mb-3 flex items-center justify-between">
@@ -566,7 +591,10 @@ defmodule MatdoriWeb.RoomLive do
       Presence.track(self(), presence_topic(post.id), socket.assigns.session_id, %{
         display_name: socket.assigns.display_name,
         color: socket.assigns.color,
-        cursor: %{x: 0, y: 0}
+        cursor: %{x: 0, y: 0},
+        cursor_note_text: "",
+        cursor_note_mode: "clear",
+        cursor_note_updated_at_ms: 0
       })
     end
 
@@ -753,6 +781,146 @@ defmodule MatdoriWeb.RoomLive do
       _ -> nil
     end
   end
+
+  defp meta_cursor(data) do
+    case data do
+      %{cursor: value} when is_map(value) -> value
+      %{"cursor" => value} when is_map(value) -> value
+      _ -> %{x: 0, y: 0}
+    end
+  end
+
+  defp upsert_presence_meta(socket, update_fun) when is_function(update_fun, 1) do
+    post_id = socket.assigns.post.id
+    topic = presence_topic(post_id)
+    session_id = socket.assigns.session_id
+
+    next_meta =
+      socket
+      |> current_presence_meta(topic, session_id)
+      |> update_fun.()
+      |> normalize_presence_meta(socket)
+
+    Presence.update(self(), topic, session_id, next_meta)
+  end
+
+  defp current_presence_meta(socket, topic, session_id) do
+    case Presence.list(topic) do
+      %{^session_id => %{metas: [meta | _]}} -> meta
+      _ -> base_presence_meta(socket)
+    end
+  end
+
+  defp base_presence_meta(socket) do
+    %{
+      display_name: socket.assigns.display_name,
+      color: socket.assigns.color,
+      cursor: %{x: 0, y: 0},
+      cursor_note_text: "",
+      cursor_note_mode: "clear",
+      cursor_note_updated_at_ms: 0
+    }
+  end
+
+  defp normalize_presence_meta(meta, socket) do
+    mode =
+      normalize_cursor_note_mode(
+        meta_cursor_note_mode(meta),
+        normalize_cursor_note_text(meta_cursor_note_text(meta))
+      )
+
+    %{
+      display_name: normalize_display_name(meta),
+      color: normalize_hex_color(meta_color(meta), socket.assigns.color),
+      cursor: normalize_cursor_position(meta_cursor_x(meta), meta_cursor_y(meta), %{x: 0, y: 0}),
+      cursor_note_text: normalize_cursor_note_text(meta_cursor_note_text(meta)),
+      cursor_note_mode: mode,
+      cursor_note_updated_at_ms:
+        normalize_cursor_note_updated_at_ms(meta_cursor_note_updated_at_ms(meta))
+    }
+  end
+
+  defp normalize_cursor_position(raw_x, raw_y, fallback) do
+    %{
+      x:
+        normalize_cursor_coordinate(raw_x, normalize_cursor_coordinate(Map.get(fallback, :x), 0)),
+      y: normalize_cursor_coordinate(raw_y, normalize_cursor_coordinate(Map.get(fallback, :y), 0))
+    }
+  end
+
+  defp normalize_cursor_coordinate(value, _default) when is_integer(value), do: max(value, 0)
+  defp normalize_cursor_coordinate(value, _default) when is_float(value), do: max(round(value), 0)
+
+  defp normalize_cursor_coordinate(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> max(parsed, 0)
+      _ -> default
+    end
+  end
+
+  defp normalize_cursor_coordinate(_value, default), do: default
+
+  defp normalize_cursor_note_text(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.slice(0, @cursor_note_max_len)
+  end
+
+  defp normalize_cursor_note_text(_value), do: ""
+
+  defp normalize_cursor_note_mode(raw_mode, normalized_text) do
+    mode =
+      case raw_mode do
+        "typing" -> "typing"
+        "final" -> "final"
+        "clear" -> "clear"
+        _ -> "typing"
+      end
+
+    if normalized_text == "" do
+      "clear"
+    else
+      mode
+    end
+  end
+
+  defp meta_cursor_x(data), do: meta_cursor(data) |> Map.get(:x) || meta_cursor(data)["x"]
+  defp meta_cursor_y(data), do: meta_cursor(data) |> Map.get(:y) || meta_cursor(data)["y"]
+
+  defp meta_cursor_note_text(data) do
+    case data do
+      %{cursor_note_text: value} -> value
+      %{"cursor_note_text" => value} -> value
+      _ -> ""
+    end
+  end
+
+  defp meta_cursor_note_mode(data) do
+    case data do
+      %{cursor_note_mode: value} -> value
+      %{"cursor_note_mode" => value} -> value
+      _ -> "clear"
+    end
+  end
+
+  defp meta_cursor_note_updated_at_ms(data) do
+    case data do
+      %{cursor_note_updated_at_ms: value} -> value
+      %{"cursor_note_updated_at_ms" => value} -> value
+      _ -> 0
+    end
+  end
+
+  defp normalize_cursor_note_updated_at_ms(value) when is_integer(value), do: max(value, 0)
+
+  defp normalize_cursor_note_updated_at_ms(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {parsed, ""} -> max(parsed, 0)
+      _ -> 0
+    end
+  end
+
+  defp normalize_cursor_note_updated_at_ms(_value), do: 0
 
   defp presence_meta(%{metas: [meta | _]}), do: meta
   defp presence_meta(%{"metas" => [meta | _]}), do: meta

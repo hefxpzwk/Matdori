@@ -20,23 +20,260 @@ function codeUnitOffsetWithin(container, targetNode, targetOffset) {
   return range.toString().length
 }
 
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function isTextInputTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  if (target.isContentEditable) {
+    return true
+  }
+
+  return Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
+}
+
+function normalizeHexColor(value, fallback = "#3b82f6") {
+  return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : fallback
+}
+
 const SnapshotCanvas = {
   mounted() {
     this.snapshotText = this.el.querySelector("#snapshot-text")
     this.lastPush = 0
+    this.lastPointer = { x: 0, y: 0 }
+    this.noteInput = null
+    this.noteFinalizeTimer = null
+    this.noteLastPushAt = 0
+    this.cursorColor = normalizeHexColor(this.el.dataset.cursorColor)
+
+    this.positionNoteInput = () => {
+      if (!this.noteInput) {
+        return
+      }
+
+      const inputWidth = this.noteInput.offsetWidth || 220
+      const inputHeight = this.noteInput.offsetHeight || 34
+      const stageWidth = this.el.clientWidth || inputWidth
+      const stageHeight = this.el.clientHeight || inputHeight
+
+      const left = clamp(this.lastPointer.x + 14, 0, Math.max(0, stageWidth - inputWidth - 4))
+      const top = clamp(this.lastPointer.y + 10, 0, Math.max(0, stageHeight - inputHeight - 4))
+
+      this.noteInput.style.left = `${Math.round(left)}px`
+      this.noteInput.style.top = `${Math.round(top)}px`
+    }
+
+    this.pushCursorNote = (mode, text) => {
+      const now = Date.now()
+      if (mode === "typing" && now - this.noteLastPushAt < 80) {
+        return
+      }
+
+      this.noteLastPushAt = now
+
+      this.pushEvent("cursor_note", {
+        mode,
+        text,
+        x: Math.round(this.lastPointer.x),
+        y: Math.round(this.lastPointer.y),
+      })
+    }
+
+    this.clearNoteFinalizeTimer = () => {
+      if (this.noteFinalizeTimer) {
+        window.clearTimeout(this.noteFinalizeTimer)
+        this.noteFinalizeTimer = null
+      }
+    }
+
+    this.closeNoteInput = ({ animateDown = false, onClosed = null } = {}) => {
+      this.clearNoteFinalizeTimer()
+
+      if (!this.noteInput) {
+        return
+      }
+
+      const input = this.noteInput
+      this.noteInput = null
+
+      const finishClose = () => {
+        input.remove()
+
+        if (typeof onClosed === "function") {
+          onClosed()
+        }
+      }
+
+      if (animateDown) {
+        input.style.pointerEvents = "none"
+        input.style.transition =
+          "transform 300ms cubic-bezier(0.2, 0.85, 0.28, 1), opacity 300ms ease, filter 300ms ease"
+        input.style.transform = "translateY(18px) scale(0.97)"
+        input.style.opacity = "0"
+        input.style.filter = "blur(1px)"
+
+        let closed = false
+
+        const cleanup = () => {
+          if (closed) {
+            return
+          }
+
+          closed = true
+          input.removeEventListener("transitionend", onTransitionEnd)
+          finishClose()
+        }
+
+        const onTransitionEnd = () => {
+          cleanup()
+        }
+
+        input.addEventListener("transitionend", onTransitionEnd, { once: true })
+        window.setTimeout(cleanup, 340)
+
+        return
+      }
+
+      finishClose()
+    }
+
+    this.finalizeNoteInput = (origin = "blur") => {
+      if (!this.noteInput) {
+        return
+      }
+
+      const text = this.noteInput.value.trim()
+      if (text === "") {
+        this.pushCursorNote("clear", "")
+      } else {
+        this.pushCursorNote("final", text)
+      }
+
+      this.closeNoteInput({
+        animateDown: origin == "enter",
+        onClosed:
+          origin === "enter"
+            ? () => {
+                if (this.el.isConnected) {
+                  this.openNoteInput()
+                }
+              }
+            : null,
+      })
+    }
+
+    this.scheduleNoteFinalize = () => {
+      this.clearNoteFinalizeTimer()
+
+      this.noteFinalizeTimer = window.setTimeout(() => {
+        this.finalizeNoteInput()
+      }, 1400)
+    }
+
+    this.openNoteInput = () => {
+      if (this.noteInput) {
+        this.noteInput.focus()
+        return
+      }
+
+      this.pushCursorNote("clear", "")
+
+      const input = document.createElement("input")
+      input.id = "cursor-note-input"
+      input.type = "text"
+      input.maxLength = 80
+      input.placeholder = "메시지 입력 후 Enter"
+      input.className =
+        "absolute z-40 w-60 rounded-full px-3 py-1.5 text-sm shadow-sm outline-none"
+      input.style.transform = "translateY(6px) scale(0.985)"
+      input.style.opacity = "0"
+      input.style.background = this.cursorColor
+      input.style.color = "#ffffff"
+      input.style.border = "1px solid rgba(255,255,255,0.6)"
+      input.style.boxShadow = "0 8px 24px rgba(15, 23, 42, 0.24)"
+      input.style.backdropFilter = "blur(4px)"
+      input.style.transition = "transform 280ms cubic-bezier(0.22, 1, 0.36, 1), opacity 280ms ease"
+
+      input.addEventListener("input", () => {
+        const value = input.value.slice(0, 80)
+        if (value !== input.value) {
+          input.value = value
+        }
+
+        if (value.trim() === "") {
+          this.pushCursorNote("clear", "")
+          this.clearNoteFinalizeTimer()
+        } else {
+          this.pushCursorNote("typing", value)
+          this.scheduleNoteFinalize()
+        }
+      })
+
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault()
+          this.finalizeNoteInput("enter")
+          return
+        }
+
+        if (event.key === "Escape") {
+          event.preventDefault()
+          this.pushCursorNote("clear", "")
+          this.closeNoteInput()
+        }
+      })
+
+      input.addEventListener("blur", () => {
+        this.finalizeNoteInput("blur")
+      })
+
+      this.noteInput = input
+      this.el.appendChild(input)
+      this.positionNoteInput()
+      window.requestAnimationFrame(() => {
+        if (!this.noteInput || this.noteInput !== input) {
+          return
+        }
+
+        input.style.transform = "translateY(0) scale(1)"
+        input.style.opacity = "1"
+      })
+      input.focus()
+    }
 
     this.onMouseMove = (event) => {
+      const rect = this.el.getBoundingClientRect()
+      const x = Math.max(0, Math.round(event.clientX - rect.left))
+      const y = Math.max(0, Math.round(event.clientY - rect.top))
+      this.lastPointer = { x, y }
+      this.positionNoteInput()
+
       const now = Date.now()
       if (now - this.lastPush < 50) {
         return
       }
 
       this.lastPush = now
-      const rect = this.el.getBoundingClientRect()
-      const x = Math.max(0, Math.round(event.clientX - rect.left))
-      const y = Math.max(0, Math.round(event.clientY - rect.top))
 
       this.pushEvent("cursor_move", { x, y })
+    }
+
+    this.onKeyDown = (event) => {
+      const slashPressed = event.key === "/" || event.code === "Slash"
+      if (!slashPressed || event.repeat) {
+        return
+      }
+
+      if (isTextInputTarget(event.target) || this.noteInput) {
+        return
+      }
+
+      event.preventDefault()
+      this.openNoteInput()
     }
 
     this.onMouseUp = () => {
@@ -98,11 +335,24 @@ const SnapshotCanvas = {
 
     this.el.addEventListener("mousemove", this.onMouseMove)
     this.el.addEventListener("mouseup", this.onMouseUp)
+    window.addEventListener("keydown", this.onKeyDown)
   },
 
   destroyed() {
     this.el.removeEventListener("mousemove", this.onMouseMove)
     this.el.removeEventListener("mouseup", this.onMouseUp)
+    window.removeEventListener("keydown", this.onKeyDown)
+
+    if (this.noteInput) {
+      this.noteInput.remove()
+      this.noteInput = null
+    }
+
+    if (this.noteFinalizeTimer) {
+      window.clearTimeout(this.noteFinalizeTimer)
+      this.noteFinalizeTimer = null
+    }
+
   }
 }
 
