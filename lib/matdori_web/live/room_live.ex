@@ -475,6 +475,50 @@ defmodule MatdoriWeb.RoomLive do
                 </span>
               </div>
 
+              <div
+                id="embed-highlight-comment-panel"
+                class="mb-3 hidden space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3"
+              >
+                <div class="flex items-center justify-between gap-2">
+                  <p id="embed-highlight-comment-meta" class="text-xs font-semibold text-zinc-700">
+                    하이라이트
+                  </p>
+                  <button
+                    id="embed-highlight-comment-close"
+                    type="button"
+                    class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+                  >
+                    <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> 닫기
+                  </button>
+                </div>
+
+                <p id="embed-highlight-comment-readonly" class="text-sm leading-relaxed text-zinc-800">
+                  아직 댓글이 없습니다.
+                </p>
+
+                <div id="embed-highlight-comment-editor" class="hidden space-y-2">
+                  <label for="embed-highlight-comment-input" class="text-xs font-medium text-zinc-600">
+                    이 하이라이트에 남길 코멘트
+                  </label>
+                  <textarea
+                    id="embed-highlight-comment-input"
+                    rows="3"
+                    maxlength="240"
+                    class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-blue-400"
+                    placeholder="이 하이라이트의 의미를 남겨보세요"
+                  ></textarea>
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      id="embed-highlight-comment-save"
+                      type="button"
+                      class="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                    >
+                      <.icon name="hero-check" class="h-3.5 w-3.5" /> 댓글 저장
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div id="room-embed-stage" class="relative isolate">
                 <%= if embed_provider(@post) == :x do %>
                   <div class="space-y-2">
@@ -559,6 +603,13 @@ defmodule MatdoriWeb.RoomLive do
                   data-toggle-selector="#embed-highlight-mode-toggle"
                   data-clear-selector="#embed-highlight-clear"
                   data-count-selector="#embed-highlight-count"
+                  data-comment-panel-selector="#embed-highlight-comment-panel"
+                  data-comment-meta-selector="#embed-highlight-comment-meta"
+                  data-comment-readonly-selector="#embed-highlight-comment-readonly"
+                  data-comment-editor-selector="#embed-highlight-comment-editor"
+                  data-comment-input-selector="#embed-highlight-comment-input"
+                  data-comment-save-selector="#embed-highlight-comment-save"
+                  data-comment-close-selector="#embed-highlight-comment-close"
                   data-session-id={@session_id}
                   data-user-color={@color}
                   class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
@@ -1048,7 +1099,19 @@ defmodule MatdoriWeb.RoomLive do
       safe_height = min(height, max_height)
 
       if safe_width > 0.0 and safe_height > 0.0 do
-        %{left: left, top: top, width: safe_width, height: safe_height}
+        id =
+          normalize_overlay_highlight_id(
+            Map.get(zone, :id) || Map.get(zone, "id"),
+            left,
+            top,
+            safe_width,
+            safe_height
+          )
+
+        comment =
+          normalize_overlay_highlight_comment(Map.get(zone, :comment) || Map.get(zone, "comment"))
+
+        %{left: left, top: top, width: safe_width, height: safe_height, id: id, comment: comment}
       else
         nil
       end
@@ -1085,6 +1148,36 @@ defmodule MatdoriWeb.RoomLive do
       true -> rounded
     end
   end
+
+  defp normalize_overlay_highlight_id(value, left, top, width, height)
+       when is_binary(value) and value != "" do
+    value
+    |> String.trim()
+    |> String.slice(0, 80)
+    |> case do
+      "" -> deterministic_overlay_highlight_id(left, top, width, height)
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_overlay_highlight_id(_value, left, top, width, height),
+    do: deterministic_overlay_highlight_id(left, top, width, height)
+
+  defp deterministic_overlay_highlight_id(left, top, width, height) do
+    hash =
+      :crypto.hash(:sha256, "#{left}:#{top}:#{width}:#{height}")
+      |> Base.encode16(case: :lower)
+
+    "hl-" <> String.slice(hash, 0, 16)
+  end
+
+  defp normalize_overlay_highlight_comment(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.slice(0, 240)
+  end
+
+  defp normalize_overlay_highlight_comment(_value), do: ""
 
   defp normalize_cursor_note_updated_at_ms(value) when is_integer(value), do: max(value, 0)
 

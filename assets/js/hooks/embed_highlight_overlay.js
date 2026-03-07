@@ -1,5 +1,6 @@
 const DRAFT_PUSH_INTERVAL_MS = 60
 const CURSOR_PUSH_INTERVAL_MS = 70
+const MAX_COMMENT_LENGTH = 240
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
@@ -7,6 +8,23 @@ function clamp(value, min, max) {
 
 function normalizeColor(value, fallback = "#3b82f6") {
   return /^#[0-9a-fA-F]{6}$/.test(value || "") ? value : fallback
+}
+
+function normalizeName(value) {
+  if (typeof value !== "string") {
+    return "Guest"
+  }
+
+  const trimmed = value.trim()
+  return trimmed === "" ? "Guest" : trimmed.slice(0, 30)
+}
+
+function normalizeComment(value) {
+  if (typeof value !== "string") {
+    return ""
+  }
+
+  return value.trim().slice(0, MAX_COMMENT_LENGTH)
 }
 
 function readMeta(presence) {
@@ -22,7 +40,26 @@ function parseFiniteNumber(value) {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function normalizeZone(zone) {
+function fallbackHighlightId(left, top, width, height) {
+  const key = `${left.toFixed(4)}:${top.toFixed(4)}:${width.toFixed(4)}:${height.toFixed(4)}`
+  let hash = 0
+
+  for (let index = 0; index < key.length; index += 1) {
+    hash = (hash * 31 + key.charCodeAt(index)) >>> 0
+  }
+
+  return `hl-${hash.toString(16).padStart(8, "0")}`
+}
+
+function createLocalHighlightId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `hl-${crypto.randomUUID()}`
+  }
+
+  return `hl-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`
+}
+
+function normalizeZone(zone, options = {}) {
   if (!zone || typeof zone !== "object") {
     return null
   }
@@ -48,11 +85,20 @@ function normalizeZone(zone) {
     return null
   }
 
+  const idRaw = typeof zone.id === "string" ? zone.id.trim().slice(0, 80) : ""
+  const id =
+    idRaw === ""
+      ? fallbackHighlightId(normalizedLeft, normalizedTop, safeWidth, safeHeight)
+      : idRaw
+
   return {
     left: Number(normalizedLeft.toFixed(4)),
     top: Number(normalizedTop.toFixed(4)),
     width: Number(safeWidth.toFixed(4)),
     height: Number(safeHeight.toFixed(4)),
+    id,
+    comment: normalizeComment(zone.comment),
+    draft: options.draft === true,
   }
 }
 
@@ -104,14 +150,21 @@ function highlightStyle(color, isMine) {
   }
 }
 
-function createHighlightNode(color, isMine) {
+function createHighlightNode(color, isMine, isSelected) {
   const style = highlightStyle(color, isMine)
   const el = document.createElement("div")
   el.className = "absolute rounded-md transition-opacity"
-  el.style.pointerEvents = "none"
+  el.style.pointerEvents = "auto"
+  el.style.cursor = "pointer"
   el.style.border = `${isMine ? 2 : 1}px solid ${style.border}`
   el.style.background = style.background
   el.style.boxShadow = style.shadow
+
+  if (isSelected) {
+    el.style.outline = `2px solid ${style.border}`
+    el.style.outlineOffset = "2px"
+  }
+
   return el
 }
 
@@ -126,17 +179,17 @@ function createDraftNode(color) {
   return el
 }
 
-function buildStateKey(highlightsBySession, draftsBySession) {
+function buildStateKey(highlightsBySession, draftsBySession, selectedHighlight) {
   const keys = []
 
   Array.from(highlightsBySession.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .forEach(([sessionId, payload]) => {
       const zoneKey = payload.zones
-        .map((zone) => `${zone.left},${zone.top},${zone.width},${zone.height}`)
+        .map((zone) => `${zone.id},${zone.left},${zone.top},${zone.width},${zone.height},${zone.comment}`)
         .join(";")
 
-      keys.push(`h|${sessionId}|${payload.color}|${zoneKey}`)
+      keys.push(`h|${sessionId}|${payload.color}|${payload.name}|${zoneKey}`)
     })
 
   Array.from(draftsBySession.entries())
@@ -145,6 +198,10 @@ function buildStateKey(highlightsBySession, draftsBySession) {
       const zone = payload.zone
       keys.push(`d|${sessionId}|${payload.color}|${zone.left},${zone.top},${zone.width},${zone.height}`)
     })
+
+  if (selectedHighlight) {
+    keys.push(`s|${selectedHighlight.sessionId}|${selectedHighlight.highlightId}`)
+  }
 
   return keys.join("||")
 }
@@ -161,6 +218,14 @@ const EmbedHighlightOverlay = {
       return
     }
 
+    this.commentPanel = document.querySelector(this.el.dataset.commentPanelSelector || "")
+    this.commentMeta = document.querySelector(this.el.dataset.commentMetaSelector || "")
+    this.commentReadonly = document.querySelector(this.el.dataset.commentReadonlySelector || "")
+    this.commentEditor = document.querySelector(this.el.dataset.commentEditorSelector || "")
+    this.commentInput = document.querySelector(this.el.dataset.commentInputSelector || "")
+    this.commentSaveButton = document.querySelector(this.el.dataset.commentSaveSelector || "")
+    this.commentCloseButton = document.querySelector(this.el.dataset.commentCloseSelector || "")
+
     this.mySessionId = this.el.dataset.sessionId || ""
     this.myColor = normalizeColor(this.el.dataset.userColor, "#3b82f6")
 
@@ -168,8 +233,9 @@ const EmbedHighlightOverlay = {
     this.draftsBySession = new Map()
     this.highlightNodes = new Map()
     this.draftNodes = new Map()
-    this.localDraftZone = null
+    this.selectedHighlight = null
     this.stateKey = ""
+    this.lastPanelKey = ""
 
     this.enabled = false
     this.dragging = false
@@ -227,11 +293,95 @@ const EmbedHighlightOverlay = {
         totalCount > ownCount ? `${ownCount}개 선택됨 · 전체 ${totalCount}개` : `${ownCount}개 선택됨`
     }
 
+    this.getHighlightEntry = (sessionId, highlightId) => {
+      const payload = this.highlightsBySession.get(sessionId)
+      if (!payload) {
+        return null
+      }
+
+      const zone = payload.zones.find((item) => item.id === highlightId)
+      if (!zone) {
+        return null
+      }
+
+      return {
+        sessionId,
+        payload,
+        zone,
+        isMine: sessionId === this.mySessionId,
+      }
+    }
+
+    this.currentSelectionEntry = () => {
+      if (!this.selectedHighlight) {
+        return null
+      }
+
+      return this.getHighlightEntry(this.selectedHighlight.sessionId, this.selectedHighlight.highlightId)
+    }
+
+    this.clearSelection = () => {
+      this.selectedHighlight = null
+      this.lastPanelKey = ""
+      this.syncStateAndRender()
+    }
+
+    this.setSelection = (sessionId, highlightId) => {
+      this.selectedHighlight = { sessionId, highlightId }
+      this.syncStateAndRender()
+    }
+
+    this.updateCommentPanel = () => {
+      if (!this.commentPanel) {
+        return
+      }
+
+      const entry = this.currentSelectionEntry()
+
+      if (!entry) {
+        this.commentPanel.classList.add("hidden")
+        if (this.commentInput) {
+          this.commentInput.value = ""
+        }
+        this.lastPanelKey = ""
+        return
+      }
+
+      const panelKey = `${entry.sessionId}|${entry.zone.id}|${entry.zone.comment}`
+      this.commentPanel.classList.remove("hidden")
+
+      if (this.commentMeta) {
+        this.commentMeta.textContent = `${entry.payload.name}님의 하이라이트`
+      }
+
+      if (this.commentReadonly) {
+        this.commentReadonly.textContent =
+          entry.zone.comment === "" ? "아직 댓글이 없습니다." : entry.zone.comment
+      }
+
+      if (this.commentEditor) {
+        this.commentEditor.classList.toggle("hidden", !entry.isMine)
+      }
+
+      if (this.commentInput && entry.isMine && panelKey !== this.lastPanelKey) {
+        this.commentInput.value = entry.zone.comment
+      }
+
+      if (this.commentInput) {
+        this.commentInput.readOnly = !entry.isMine
+      }
+
+      if (this.commentSaveButton) {
+        this.commentSaveButton.disabled = !entry.isMine
+      }
+
+      this.lastPanelKey = panelKey
+    }
+
     this.clearHighlightNodes = () => {
       this.highlightNodes.forEach((nodes) => {
         nodes.forEach((node) => node.remove())
       })
-
       this.highlightNodes.clear()
     }
 
@@ -261,12 +411,21 @@ const EmbedHighlightOverlay = {
         const nodes = []
 
         payload.zones.forEach((zone) => {
-          const node = createHighlightNode(payload.color, isMine)
+          const isSelected =
+            this.selectedHighlight &&
+            this.selectedHighlight.sessionId === sessionId &&
+            this.selectedHighlight.highlightId === zone.id
+
+          const node = createHighlightNode(payload.color, isMine, Boolean(isSelected))
           const px = normalizeToPixels(rect, zone)
           node.style.left = `${px.left}px`
           node.style.top = `${px.top}px`
           node.style.width = `${px.width}px`
           node.style.height = `${px.height}px`
+          node.dataset.overlayHighlightNode = "true"
+          node.dataset.sessionId = sessionId
+          node.dataset.highlightId = zone.id
+          node.addEventListener("click", this.onHighlightNodeClick)
           this.el.appendChild(node)
           nodes.push(node)
         })
@@ -275,6 +434,7 @@ const EmbedHighlightOverlay = {
       })
 
       this.updateCount()
+      this.updateCommentPanel()
     }
 
     this.renderDrafts = () => {
@@ -305,14 +465,15 @@ const EmbedHighlightOverlay = {
     }
 
     this.syncStateKey = () => {
-      this.stateKey = buildStateKey(this.highlightsBySession, this.draftsBySession)
+      this.stateKey = buildStateKey(this.highlightsBySession, this.draftsBySession, this.selectedHighlight)
     }
 
     this.syncStateAndRender = () => {
-      const nextKey = buildStateKey(this.highlightsBySession, this.draftsBySession)
+      const nextKey = buildStateKey(this.highlightsBySession, this.draftsBySession, this.selectedHighlight)
 
       if (nextKey === this.stateKey) {
         this.updateCount()
+        this.updateCommentPanel()
         return
       }
 
@@ -332,14 +493,22 @@ const EmbedHighlightOverlay = {
       }
 
       const normalized = normalizeZones(zones)
+      const current = this.highlightsBySession.get(this.mySessionId)
+      const displayName = current ? current.name : "나"
 
       if (normalized.length === 0) {
         this.highlightsBySession.delete(this.mySessionId)
       } else {
         this.highlightsBySession.set(this.mySessionId, {
           color: this.myColor,
+          name: displayName,
           zones: normalized,
         })
+      }
+
+      const selectedEntry = this.currentSelectionEntry()
+      if (!selectedEntry) {
+        this.selectedHighlight = null
       }
 
       this.syncStateAndRender()
@@ -347,6 +516,25 @@ const EmbedHighlightOverlay = {
       if (options.push !== false) {
         this.pushMyHighlights()
       }
+    }
+
+    this.updateMyHighlightComment = (highlightId, comment) => {
+      if (!this.mySessionId) {
+        return
+      }
+
+      const mine = this.highlightsBySession.get(this.mySessionId)
+      if (!mine) {
+        return
+      }
+
+      const normalizedComment = normalizeComment(comment)
+      const updatedZones = mine.zones.map((zone) =>
+        zone.id === highlightId ? { ...zone, comment: normalizedComment } : zone
+      )
+
+      this.setMyHighlights(updatedZones)
+      this.setSelection(this.mySessionId, highlightId)
     }
 
     this.pushDraftNow = (zone) => {
@@ -394,9 +582,30 @@ const EmbedHighlightOverlay = {
       }, wait)
     }
 
-    this.setLocalDraftZone = (zone, options = {}) => {
-      this.localDraftZone = zone
+    this.pushCursorMoveFromEvent = (event, options = {}) => {
+      if (!this.cursorStage) {
+        return
+      }
 
+      const force = options.force === true
+      const now = Date.now()
+
+      if (!force && now - this.lastCursorPushAtMs < CURSOR_PUSH_INTERVAL_MS) {
+        return
+      }
+
+      const rect = this.cursorStage.getBoundingClientRect()
+      const x = clamp(event.clientX - rect.left, 0, rect.width)
+      const y = clamp(event.clientY - rect.top, 0, rect.height)
+
+      this.lastCursorPushAtMs = now
+      this.pushEvent("cursor_move", {
+        x: Math.round(x),
+        y: Math.round(y),
+      })
+    }
+
+    this.setLocalDraftZone = (zone, options = {}) => {
       if (options.push !== false) {
         this.scheduleDraftPush(zone, options.immediate === true)
       }
@@ -417,13 +626,14 @@ const EmbedHighlightOverlay = {
         }
 
         const color = normalizeColor(meta.color, sessionId === this.mySessionId ? this.myColor : "#64748b")
+        const name = normalizeName(meta.display_name)
         const zones = normalizeZones(meta.overlay_highlights)
 
         if (zones.length > 0) {
-          nextHighlightsBySession.set(sessionId, { color, zones })
+          nextHighlightsBySession.set(sessionId, { color, name, zones })
         }
 
-        const draft = normalizeZone(meta.overlay_highlight_draft)
+        const draft = normalizeZone(meta.overlay_highlight_draft, { draft: true })
         if (draft) {
           nextDraftsBySession.set(sessionId, { color, zone: draft })
         }
@@ -443,6 +653,11 @@ const EmbedHighlightOverlay = {
 
       this.highlightsBySession = nextHighlightsBySession
       this.draftsBySession = nextDraftsBySession
+
+      if (!this.currentSelectionEntry()) {
+        this.selectedHighlight = null
+      }
+
       this.syncStateAndRender()
     }
 
@@ -451,7 +666,6 @@ const EmbedHighlightOverlay = {
     this.beginDraft = (x, y) => {
       this.dragStart = { x, y }
       this.dragging = true
-      this.localDraftZone = null
       this.el.appendChild(this.draftNode)
       this.draftNode.classList.remove("hidden")
       this.draftNode.style.left = `${Math.round(x)}px`
@@ -481,12 +695,15 @@ const EmbedHighlightOverlay = {
         return
       }
 
-      const zone = normalizeZone({
-        left: left / rect.width,
-        top: top / rect.height,
-        width: width / rect.width,
-        height: height / rect.height,
-      })
+      const zone = normalizeZone(
+        {
+          left: left / rect.width,
+          top: top / rect.height,
+          width: width / rect.width,
+          height: height / rect.height,
+        },
+        { draft: true }
+      )
 
       this.setLocalDraftZone(zone, { push: true, immediate: false })
     }
@@ -501,8 +718,6 @@ const EmbedHighlightOverlay = {
 
       if (options.push !== false) {
         this.setLocalDraftZone(null, { push: true, immediate: options.immediate !== false })
-      } else {
-        this.localDraftZone = null
       }
     }
 
@@ -530,6 +745,8 @@ const EmbedHighlightOverlay = {
         top: top / rect.height,
         width: width / rect.width,
         height: height / rect.height,
+        id: createLocalHighlightId(),
+        comment: "",
       })
 
       if (!normalized) {
@@ -539,11 +756,13 @@ const EmbedHighlightOverlay = {
 
       const myZones = [...this.myHighlights(), normalized]
       this.setMyHighlights(myZones)
+      this.setSelection(this.mySessionId, normalized.id)
       this.setLocalDraftZone(null, { push: true, immediate: true })
     }
 
     this.clearHighlights = () => {
       this.cancelDraft({ push: true, immediate: true })
+      this.clearSelection()
       this.setMyHighlights([])
     }
 
@@ -555,27 +774,33 @@ const EmbedHighlightOverlay = {
       }
     }
 
-    this.pushCursorMoveFromEvent = (event, options = {}) => {
-      if (!this.cursorStage) {
+    this.onHighlightNodeClick = (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      const node = event.currentTarget
+      const sessionId = node.dataset.sessionId || ""
+      const highlightId = node.dataset.highlightId || ""
+
+      if (sessionId !== "" && highlightId !== "") {
+        this.setSelection(sessionId, highlightId)
+      }
+    }
+
+    this.onCommentSaveClick = (event) => {
+      event.preventDefault()
+      const entry = this.currentSelectionEntry()
+
+      if (!entry || !entry.isMine || !this.commentInput) {
         return
       }
 
-      const force = options.force === true
-      const now = Date.now()
+      this.updateMyHighlightComment(entry.zone.id, this.commentInput.value)
+    }
 
-      if (!force && now - this.lastCursorPushAtMs < CURSOR_PUSH_INTERVAL_MS) {
-        return
-      }
-
-      const rect = this.cursorStage.getBoundingClientRect()
-      const x = clamp(event.clientX - rect.left, 0, rect.width)
-      const y = clamp(event.clientY - rect.top, 0, rect.height)
-
-      this.lastCursorPushAtMs = now
-      this.pushEvent("cursor_move", {
-        x: Math.round(x),
-        y: Math.round(y),
-      })
+    this.onCommentCloseClick = (event) => {
+      event.preventDefault()
+      this.clearSelection()
     }
 
     this.onToggleClick = (event) => {
@@ -596,6 +821,10 @@ const EmbedHighlightOverlay = {
 
     this.onPointerDown = (event) => {
       if (!this.enabled || event.button !== 0) {
+        return
+      }
+
+      if (event.target instanceof HTMLElement && event.target.closest("[data-overlay-highlight-node='true']")) {
         return
       }
 
@@ -665,6 +894,11 @@ const EmbedHighlightOverlay = {
         return
       }
 
+      if (this.selectedHighlight) {
+        this.clearSelection()
+        return
+      }
+
       this.cancelDraft({ push: true, immediate: true })
     }
 
@@ -674,6 +908,15 @@ const EmbedHighlightOverlay = {
     this.el.addEventListener("pointermove", this.onPointerMove)
     this.el.addEventListener("pointerup", this.onPointerUp)
     this.el.addEventListener("pointercancel", this.onPointerCancel)
+
+    if (this.commentSaveButton) {
+      this.commentSaveButton.addEventListener("click", this.onCommentSaveClick)
+    }
+
+    if (this.commentCloseButton) {
+      this.commentCloseButton.addEventListener("click", this.onCommentCloseClick)
+    }
+
     window.addEventListener("resize", this.onWindowResize)
     window.addEventListener("keydown", this.onKeyDown)
 
@@ -681,6 +924,7 @@ const EmbedHighlightOverlay = {
     this.syncModeUi()
     this.syncStateKey()
     this.updateCount()
+    this.updateCommentPanel()
   },
 
   destroyed() {
@@ -690,6 +934,14 @@ const EmbedHighlightOverlay = {
 
     if (this.clearButton && this.onClearClick) {
       this.clearButton.removeEventListener("click", this.onClearClick)
+    }
+
+    if (this.commentSaveButton && this.onCommentSaveClick) {
+      this.commentSaveButton.removeEventListener("click", this.onCommentSaveClick)
+    }
+
+    if (this.commentCloseButton && this.onCommentCloseClick) {
+      this.commentCloseButton.removeEventListener("click", this.onCommentCloseClick)
     }
 
     if (this.el && this.onPointerDown) {

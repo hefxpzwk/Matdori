@@ -25,6 +25,9 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#embed-highlight-mode-toggle")
     assert has_element?(view, "#embed-highlight-clear")
     assert has_element?(view, "#embed-highlight-count", "0개 선택됨")
+    assert has_element?(view, "#embed-highlight-comment-panel.hidden")
+    assert has_element?(view, "#embed-highlight-comment-input")
+    assert has_element?(view, "#embed-highlight-comment-save")
     assert has_element?(view, "#room-embed-highlight-overlay[phx-hook='EmbedHighlightOverlay']")
     assert has_element?(view, "#room-embed-highlight-overlay[data-session-id][data-user-color]")
     assert render(view) =~ "임베드 가능"
@@ -208,7 +211,14 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     render_hook(view_a, "overlay_highlights_sync", %{
       "highlights" => [
-        %{"left" => 0.1, "top" => 0.2, "width" => 0.25, "height" => 0.3}
+        %{
+          "id" => "mine-1",
+          "left" => 0.1,
+          "top" => 0.2,
+          "width" => 0.25,
+          "height" => 0.3,
+          "comment" => "여기에 코멘트"
+        }
       ]
     })
 
@@ -219,6 +229,8 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert zone.top == 0.2
     assert zone.width == 0.25
     assert zone.height == 0.3
+    assert zone.id == "mine-1"
+    assert zone.comment == "여기에 코멘트"
     assert is_nil(meta.overlay_highlight_draft)
 
     render_hook(view_a, "overlay_highlight_draft", %{"zone" => nil})
