@@ -47,6 +47,7 @@ const SnapshotCanvas = {
     this.lastPointer = { x: 0, y: 0 }
     this.noteInput = null
     this.noteFinalizeTimer = null
+    this.noteClearTimer = null
     this.noteLastPushAt = 0
     this.cursorColor = normalizeHexColor(this.el.dataset.cursorColor)
 
@@ -87,6 +88,13 @@ const SnapshotCanvas = {
       if (this.noteFinalizeTimer) {
         window.clearTimeout(this.noteFinalizeTimer)
         this.noteFinalizeTimer = null
+      }
+    }
+
+    this.clearNoteClearTimer = () => {
+      if (this.noteClearTimer) {
+        window.clearTimeout(this.noteClearTimer)
+        this.noteClearTimer = null
       }
     }
 
@@ -148,9 +156,16 @@ const SnapshotCanvas = {
 
       const text = this.noteInput.value.trim()
       if (text === "") {
+        this.clearNoteClearTimer()
         this.pushCursorNote("clear", "")
       } else {
+        this.clearNoteClearTimer()
         this.pushCursorNote("final", text)
+
+        this.noteClearTimer = window.setTimeout(() => {
+          this.noteClearTimer = null
+          this.pushCursorNote("clear", "")
+        }, 420)
       }
 
       this.closeNoteInput({
@@ -204,8 +219,10 @@ const SnapshotCanvas = {
 
         if (value.trim() === "") {
           this.pushCursorNote("clear", "")
+          this.clearNoteClearTimer()
           this.clearNoteFinalizeTimer()
         } else {
+          this.clearNoteClearTimer()
           this.pushCursorNote("typing", value)
           this.scheduleNoteFinalize()
         }
@@ -221,6 +238,7 @@ const SnapshotCanvas = {
         if (event.key === "Escape") {
           event.preventDefault()
           this.pushCursorNote("clear", "")
+          this.clearNoteClearTimer()
           this.closeNoteInput()
         }
       })
@@ -349,6 +367,11 @@ const SnapshotCanvas = {
     if (this.noteFinalizeTimer) {
       window.clearTimeout(this.noteFinalizeTimer)
       this.noteFinalizeTimer = null
+    }
+
+    if (this.noteClearTimer) {
+      window.clearTimeout(this.noteClearTimer)
+      this.noteClearTimer = null
     }
 
   }

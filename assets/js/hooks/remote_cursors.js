@@ -102,6 +102,7 @@ function buildCursorNode(sessionId) {
   noteBubble.style.backdropFilter = "blur(4px)"
   noteBubble.style.opacity = "1"
   noteBubble.style.transform = "translateY(0px)"
+  noteBubble.style.filter = "blur(0px)"
   noteBubble.style.transition = "none"
 
   wrap.appendChild(pointerRow)
@@ -143,6 +144,7 @@ const RemoteCursors = {
       parts.noteBubble.style.display = "none"
       parts.noteBubble.style.opacity = "1"
       parts.noteBubble.style.transform = "translateY(0px)"
+      parts.noteBubble.style.filter = "blur(0px)"
       parts.noteBubble.style.transition = "none"
       parts.noteBubble.textContent = ""
       parts.noteMode = "clear"
@@ -162,6 +164,7 @@ const RemoteCursors = {
       parts.noteBubble.textContent = text
       parts.noteBubble.style.opacity = "1"
       parts.noteBubble.style.transform = "translateY(0px)"
+      parts.noteBubble.style.filter = "blur(0px)"
     }
 
     this.showFinalBubble = (parts, text, updatedAtMs) => {
@@ -191,7 +194,7 @@ const RemoteCursors = {
         }
 
         parts.noteBubble.style.transition =
-          "opacity 300ms cubic-bezier(0.2, 0.85, 0.28, 1), transform 300ms cubic-bezier(0.2, 0.85, 0.28, 1)"
+          "opacity 300ms cubic-bezier(0.2, 0.85, 0.28, 1), transform 300ms cubic-bezier(0.2, 0.85, 0.28, 1), filter 300ms ease"
 
         window.requestAnimationFrame(() => {
           if (parts.noteMode !== "final" || parts.noteUpdatedAtMs !== updatedAtMs) {
@@ -200,6 +203,7 @@ const RemoteCursors = {
 
           parts.noteBubble.style.opacity = "0"
           parts.noteBubble.style.transform = "translateY(18px) scale(0.97)"
+          parts.noteBubble.style.filter = "blur(1px)"
         })
       }, NOTE_FADE_DELAY_MS)
 

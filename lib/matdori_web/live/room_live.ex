@@ -66,7 +66,16 @@ defmodule MatdoriWeb.RoomLive do
     if RateLimiter.allow?(socket.assigns.session_id, :cursor_move, @cursor_limit, :second) == :ok and
          socket.assigns.post do
       upsert_presence_meta(socket, fn meta ->
-        Map.put(meta, :cursor, normalize_cursor_position(x, y, meta_cursor(meta)))
+        next_meta = Map.put(meta, :cursor, normalize_cursor_position(x, y, meta_cursor(meta)))
+
+        if meta_cursor_note_mode(meta) == "final" do
+          next_meta
+          |> Map.put(:cursor_note_text, "")
+          |> Map.put(:cursor_note_mode, "clear")
+          |> Map.put(:cursor_note_updated_at_ms, System.system_time(:millisecond))
+        else
+          next_meta
+        end
       end)
     end
 
