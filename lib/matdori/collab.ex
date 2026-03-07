@@ -7,9 +7,20 @@ defmodule Matdori.Collab do
   alias Matdori.Repo
   alias Matdori.TextAnchors
   alias Matdori.XTimeline
-  alias Matdori.Collab.{Post, PostSnapshot, Highlight, Comment, PostHeart, PostView, Report}
+
+  alias Matdori.Collab.{
+    Post,
+    PostSnapshot,
+    Highlight,
+    Comment,
+    PostHeart,
+    PostView,
+    Report,
+    OverlayHighlight
+  }
 
   @reaction_kinds ~w(like dislike)
+  @overlay_highlight_limit 40
 
   def today_date do
     DateTime.utc_now()
@@ -234,6 +245,66 @@ defmodule Matdori.Collab do
         preload: [:comments]
     )
   end
+
+  def list_overlay_highlights(post_id) when is_integer(post_id) do
+    Repo.all(
+      from h in OverlayHighlight,
+        where: h.post_id == ^post_id,
+        order_by: [asc: h.inserted_at, asc: h.id]
+    )
+  end
+
+  def list_overlay_highlights(_post_id), do: []
+
+  def replace_overlay_highlights(post_id, attrs)
+      when is_integer(post_id) and is_map(attrs) do
+    session_id = attrs["session_id"] || attrs[:session_id]
+    display_name = attrs["display_name"] || attrs[:display_name]
+    color = attrs["color"] || attrs[:color]
+    highlights = attrs["highlights"] || attrs[:highlights] || []
+
+    with true <- is_binary(session_id) and session_id != "",
+         true <- is_binary(display_name) and String.trim(display_name) != "",
+         true <- is_binary(color) and color != "" do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      normalized_rows =
+        highlights
+        |> normalize_overlay_highlights_payload()
+        |> Enum.map(fn zone ->
+          %{
+            post_id: post_id,
+            highlight_key: zone.highlight_key,
+            session_id: String.slice(session_id, 0, 100),
+            display_name: normalize_overlay_display_name(display_name),
+            color: normalize_overlay_color(color),
+            left: zone.left,
+            top: zone.top,
+            width: zone.width,
+            height: zone.height,
+            comment: zone.comment,
+            inserted_at: now,
+            updated_at: now
+          }
+        end)
+
+      Multi.new()
+      |> Multi.delete_all(
+        :delete_existing,
+        from(h in OverlayHighlight, where: h.post_id == ^post_id and h.session_id == ^session_id)
+      )
+      |> maybe_insert_overlay_highlights(normalized_rows)
+      |> Repo.transaction()
+      |> case do
+        {:ok, _} -> {:ok, list_overlay_highlights(post_id)}
+        {:error, _step, reason, _} -> {:error, reason}
+      end
+    else
+      _ -> {:error, :invalid_overlay_highlights}
+    end
+  end
+
+  def replace_overlay_highlights(_post_id, _attrs), do: {:error, :invalid_overlay_highlights}
 
   def create_highlight(snapshot, attrs) do
     selector = %{
@@ -494,6 +565,124 @@ defmodule Matdori.Collab do
     |> Multi.update(:set_current, fn %{post: updated_post, snapshot: snapshot} ->
       Post.changeset(updated_post, %{current_snapshot_id: snapshot.id})
     end)
+  end
+
+  defp maybe_insert_overlay_highlights(multi, []), do: multi
+
+  defp maybe_insert_overlay_highlights(multi, rows) do
+    Multi.insert_all(multi, :insert_overlay_highlights, OverlayHighlight, rows)
+  end
+
+  defp normalize_overlay_highlights_payload(value) when is_list(value) do
+    value
+    |> Enum.reduce([], fn zone, acc ->
+      case normalize_overlay_highlight_payload(zone) do
+        nil -> acc
+        normalized -> [normalized | acc]
+      end
+    end)
+    |> Enum.reverse()
+    |> Enum.take(@overlay_highlight_limit)
+  end
+
+  defp normalize_overlay_highlights_payload(_value), do: []
+
+  defp normalize_overlay_highlight_payload(zone) when is_map(zone) do
+    with {:ok, left} <- normalize_overlay_ratio(Map.get(zone, :left) || Map.get(zone, "left")),
+         {:ok, top} <- normalize_overlay_ratio(Map.get(zone, :top) || Map.get(zone, "top")),
+         {:ok, width} <- normalize_overlay_ratio(Map.get(zone, :width) || Map.get(zone, "width")),
+         {:ok, height} <-
+           normalize_overlay_ratio(Map.get(zone, :height) || Map.get(zone, "height")) do
+      max_width = max(1.0 - left, 0.0)
+      max_height = max(1.0 - top, 0.0)
+      safe_width = min(width, max_width)
+      safe_height = min(height, max_height)
+
+      if safe_width > 0.0 and safe_height > 0.0 do
+        %{
+          highlight_key:
+            normalize_overlay_highlight_key(
+              Map.get(zone, :id) || Map.get(zone, "id"),
+              left,
+              top,
+              safe_width,
+              safe_height
+            ),
+          left: left,
+          top: top,
+          width: safe_width,
+          height: safe_height,
+          comment: normalize_overlay_comment(Map.get(zone, :comment) || Map.get(zone, "comment"))
+        }
+      else
+        nil
+      end
+    else
+      :error -> nil
+    end
+  end
+
+  defp normalize_overlay_highlight_payload(_zone), do: nil
+
+  defp normalize_overlay_ratio(value) when is_integer(value),
+    do: {:ok, clamp_overlay_ratio(value * 1.0)}
+
+  defp normalize_overlay_ratio(value) when is_float(value), do: {:ok, clamp_overlay_ratio(value)}
+
+  defp normalize_overlay_ratio(value) when is_binary(value) do
+    case Float.parse(String.trim(value)) do
+      {parsed, ""} -> {:ok, clamp_overlay_ratio(parsed)}
+      _ -> :error
+    end
+  end
+
+  defp normalize_overlay_ratio(_value), do: :error
+
+  defp clamp_overlay_ratio(value) do
+    rounded = Float.round(value, 4)
+
+    cond do
+      rounded < 0.0 -> 0.0
+      rounded > 1.0 -> 1.0
+      true -> rounded
+    end
+  end
+
+  defp normalize_overlay_highlight_key(value, left, top, width, height) when is_binary(value) do
+    case value |> String.trim() |> String.slice(0, 80) do
+      "" -> normalize_overlay_highlight_key(nil, left, top, width, height)
+      key -> key
+    end
+  end
+
+  defp normalize_overlay_highlight_key(_value, left, top, width, height) do
+    hash =
+      :crypto.hash(:sha256, "#{left}:#{top}:#{width}:#{height}")
+      |> Base.encode16(case: :lower)
+
+    "hl-" <> String.slice(hash, 0, 16)
+  end
+
+  defp normalize_overlay_display_name(name) do
+    name
+    |> String.trim()
+    |> String.slice(0, 30)
+  end
+
+  defp normalize_overlay_comment(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.slice(0, 240)
+  end
+
+  defp normalize_overlay_comment(_value), do: ""
+
+  defp normalize_overlay_color(value) do
+    if is_binary(value) and Regex.match?(~r/^#[0-9a-fA-F]{6}$/, value) do
+      value
+    else
+      "#3b82f6"
+    end
   end
 
   defp parse_source_post(source_post) when is_map(source_post) do

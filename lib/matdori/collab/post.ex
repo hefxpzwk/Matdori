@@ -2,7 +2,7 @@ defmodule Matdori.Collab.Post do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Matdori.Collab.{PostSnapshot, PostHeart, PostView, Report}
+  alias Matdori.Collab.{PostSnapshot, PostHeart, PostView, Report, OverlayHighlight}
 
   schema "posts" do
     field :title, :string
@@ -24,6 +24,7 @@ defmodule Matdori.Collab.Post do
     has_many :hearts, PostHeart
     has_many :views, PostView
     has_many :reports, Report
+    has_many :overlay_highlights, OverlayHighlight
 
     timestamps(type: :utc_datetime_usec)
   end

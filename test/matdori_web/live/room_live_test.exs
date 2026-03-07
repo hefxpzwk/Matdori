@@ -26,8 +26,11 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#embed-highlight-clear")
     assert has_element?(view, "#embed-highlight-count", "0개 선택됨")
     assert has_element?(view, "#embed-highlight-comment-panel.hidden")
+    assert has_element?(view, "#embed-highlight-comment-pointer")
     assert has_element?(view, "#embed-highlight-comment-input")
     assert has_element?(view, "#embed-highlight-comment-save")
+    assert has_element?(view, "#room-embed-center-rail")
+    assert has_element?(view, "#room-embed-content")
     assert has_element?(view, "#room-embed-highlight-overlay[phx-hook='EmbedHighlightOverlay']")
     assert has_element?(view, "#room-embed-highlight-overlay[data-session-id][data-user-color]")
     assert render(view) =~ "임베드 가능"
@@ -222,15 +225,16 @@ defmodule MatdoriWeb.RoomLiveTest do
       ]
     })
 
-    assert %{"overlay-session-a" => %{metas: [meta | _]}} = Presence.list("presence:#{post.id}")
+    assert [zone] = Collab.list_overlay_highlights(post.id)
 
-    assert [zone] = meta.overlay_highlights
     assert zone.left == 0.1
     assert zone.top == 0.2
     assert zone.width == 0.25
     assert zone.height == 0.3
-    assert zone.id == "mine-1"
+    assert zone.highlight_key == "mine-1"
     assert zone.comment == "여기에 코멘트"
+
+    assert %{"overlay-session-a" => %{metas: [meta | _]}} = Presence.list("presence:#{post.id}")
     assert is_nil(meta.overlay_highlight_draft)
 
     render_hook(view_a, "overlay_highlight_draft", %{"zone" => nil})
@@ -241,10 +245,61 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert is_nil(draft_cleared.overlay_highlight_draft)
 
     render_hook(view_a, "overlay_highlights_sync", %{"highlights" => []})
+    assert Collab.list_overlay_highlights(post.id) == []
+  end
 
-    assert %{"overlay-session-a" => %{metas: [cleared_meta | _]}} =
-             Presence.list("presence:#{post.id}")
+  test "overlay highlights are broadcast to other users and persist after reload", %{conn: conn} do
+    id = Integer.to_string(System.unique_integer([:positive]))
 
-    assert cleared_meta.overlay_highlights == []
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "오버레이 영구 저장",
+                 "tweet_url" => "https://x.com/overlay_saved/status/#{id}"
+               },
+               "room-live-overlay-persist"
+             )
+
+    conn_a = init_test_session(conn, %{"session_id" => "overlay-persist-a"})
+    conn_b = init_test_session(conn, %{"session_id" => "overlay-persist-b"})
+
+    {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
+    {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
+
+    assert_push_event(view_a, "overlay_highlights_state", %{highlights: []})
+    assert_push_event(view_b, "overlay_highlights_state", %{highlights: []})
+
+    render_hook(view_a, "overlay_highlights_sync", %{
+      "highlights" => [
+        %{
+          "id" => "persist-1",
+          "left" => 0.33,
+          "top" => 0.21,
+          "width" => 0.18,
+          "height" => 0.17,
+          "comment" => "리로드 후에도 남아야 함"
+        }
+      ]
+    })
+
+    assert_push_event(view_b, "overlay_highlights_state", %{highlights: highlights_from_other})
+
+    assert Enum.any?(highlights_from_other, fn highlight ->
+             highlight.session_id == "overlay-persist-a" and
+               highlight.id == "persist-1" and
+               highlight.comment == "리로드 후에도 남아야 함"
+           end)
+
+    {:ok, view_b_reloaded, _html} = live(conn_b, ~p"/rooms/#{post.id}")
+
+    assert_push_event(view_b_reloaded, "overlay_highlights_state", %{
+      highlights: highlights_after_reload
+    })
+
+    assert Enum.any?(highlights_after_reload, fn highlight ->
+             highlight.session_id == "overlay-persist-a" and
+               highlight.id == "persist-1" and
+               highlight.comment == "리로드 후에도 남아야 함"
+           end)
   end
 end

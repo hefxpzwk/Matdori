@@ -9,7 +9,6 @@ defmodule MatdoriWeb.RoomLive do
   @cursor_limit 20
   @cursor_note_limit 30
   @cursor_note_max_len 80
-  @overlay_highlight_limit 40
   @overlay_draft_limit 30
   @action_limit 20
 
@@ -30,6 +29,7 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:selected_version, nil)
       |> assign(:segments, [])
       |> assign(:highlights, [])
+      |> assign(:overlay_highlights, [])
       |> assign(:selected_highlight_id, nil)
       |> assign(:like_count, 0)
       |> assign(:dislike_count, 0)
@@ -113,14 +113,32 @@ defmodule MatdoriWeb.RoomLive do
          @action_limit,
          :second
        ) == :ok and socket.assigns.post do
-      upsert_presence_meta(socket, fn meta ->
-        meta
-        |> Map.put(:overlay_highlights, normalize_overlay_highlights(highlights))
-        |> Map.put(:overlay_highlight_draft, nil)
-      end)
-    end
+      case Collab.replace_overlay_highlights(socket.assigns.post.id, %{
+             session_id: socket.assigns.session_id,
+             display_name: socket.assigns.display_name,
+             color: socket.assigns.color,
+             highlights: highlights
+           }) do
+        {:ok, overlay_highlights} ->
+          upsert_presence_meta(socket, fn meta ->
+            Map.put(meta, :overlay_highlight_draft, nil)
+          end)
 
-    {:noreply, socket}
+          broadcast_overlay_highlights(socket.assigns.post.id)
+
+          {:noreply,
+           socket
+           |> assign(:overlay_highlights, overlay_highlights)
+           |> push_event("overlay_highlights_state", %{
+             highlights: overlay_highlights_payload(overlay_highlights)
+           })}
+
+        {:error, _reason} ->
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event("overlay_highlight_draft", %{"zone" => zone}, socket) do
@@ -315,6 +333,21 @@ defmodule MatdoriWeb.RoomLive do
     end
   end
 
+  def handle_info({:overlay_highlights_updated, post_id}, socket) do
+    if socket.assigns.post && socket.assigns.post.id == post_id do
+      overlay_highlights = Collab.list_overlay_highlights(post_id)
+
+      {:noreply,
+       socket
+       |> assign(:overlay_highlights, overlay_highlights)
+       |> push_event("overlay_highlights_state", %{
+         highlights: overlay_highlights_payload(overlay_highlights)
+       })}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff"}, socket) do
     if socket.assigns.post do
       presences = Presence.list(presence_topic(socket.assigns.post.id))
@@ -475,146 +508,165 @@ defmodule MatdoriWeb.RoomLive do
                 </span>
               </div>
 
-              <div
-                id="embed-highlight-comment-panel"
-                class="mb-3 hidden space-y-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3"
-              >
-                <div class="flex items-center justify-between gap-2">
-                  <p id="embed-highlight-comment-meta" class="text-xs font-semibold text-zinc-700">
-                    하이라이트
-                  </p>
-                  <button
-                    id="embed-highlight-comment-close"
-                    type="button"
-                    class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
-                  >
-                    <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> 닫기
-                  </button>
-                </div>
-
-                <p id="embed-highlight-comment-readonly" class="text-sm leading-relaxed text-zinc-800">
-                  아직 댓글이 없습니다.
-                </p>
-
-                <div id="embed-highlight-comment-editor" class="hidden space-y-2">
-                  <label for="embed-highlight-comment-input" class="text-xs font-medium text-zinc-600">
-                    이 하이라이트에 남길 코멘트
-                  </label>
-                  <textarea
-                    id="embed-highlight-comment-input"
-                    rows="3"
-                    maxlength="240"
-                    class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-blue-400"
-                    placeholder="이 하이라이트의 의미를 남겨보세요"
-                  ></textarea>
-                  <div class="flex items-center justify-end gap-2">
-                    <button
-                      id="embed-highlight-comment-save"
-                      type="button"
-                      class="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
-                    >
-                      <.icon name="hero-check" class="h-3.5 w-3.5" /> 댓글 저장
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div id="room-embed-stage" class="relative isolate">
-                <%= if embed_provider(@post) == :x do %>
-                  <div class="space-y-2">
-                    <div
-                      id="tweet-embed"
-                      phx-hook="XEmbed"
-                      phx-update="ignore"
-                      data-tweet-url={@post.tweet_url}
-                      class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
-                    >
-                      <blockquote class="twitter-tweet">
-                        <a href={@post.tweet_url}>X 게시글</a>
-                      </blockquote>
-                    </div>
-                    <p class="text-xs text-zinc-500">
-                      임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
-                    </p>
-                  </div>
-                <% else %>
-                  <%= if embed_provider(@post) == :youtube do %>
-                    <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
-                      <iframe
-                        id="youtube-embed"
-                        src={youtube_embed_url(@post)}
-                        class="w-full"
-                        style="aspect-ratio: 16 / 9;"
-                        width="1280"
-                        height="720"
-                        title={display_title(@post)}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerpolicy="strict-origin-when-cross-origin"
-                        loading="lazy"
-                        allowfullscreen
+              <div id="room-embed-stage" class="relative isolate overflow-x-auto">
+                <div id="room-embed-center-rail" class="flex min-w-full justify-center">
+                  <div id="room-embed-content" class="relative w-[760px] min-w-[760px] max-w-[760px]">
+                    <%= if embed_provider(@post) == :x do %>
+                      <div
+                        id="tweet-embed"
+                        phx-hook="XEmbed"
+                        phx-update="ignore"
+                        data-tweet-url={@post.tweet_url}
+                        class="min-h-24 rounded-lg border border-zinc-100 bg-zinc-50 p-2"
                       >
-                      </iframe>
-                    </div>
-                  <% else %>
-                    <div
-                      id="link-preview-card"
-                      class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
-                    >
-                      <a
-                        id="preview-card-source"
-                        href={@post.tweet_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="block hover:bg-zinc-50"
-                      >
-                        <div class="aspect-[16/9] w-full bg-zinc-100">
-                          <img
-                            :if={preview_image_url(@post)}
-                            id="preview-card-image"
-                            src={preview_image_url(@post)}
-                            alt={display_title(@post)}
-                            class="h-full w-full object-cover"
+                        <blockquote class="twitter-tweet">
+                          <a href={@post.tweet_url}>X 게시글</a>
+                        </blockquote>
+                      </div>
+                    <% else %>
+                      <%= if embed_provider(@post) == :youtube do %>
+                        <div class="overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
+                          <iframe
+                            id="youtube-embed"
+                            src={youtube_embed_url(@post)}
+                            class="w-full"
+                            style="aspect-ratio: 16 / 9;"
+                            width="1280"
+                            height="720"
+                            title={display_title(@post)}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerpolicy="strict-origin-when-cross-origin"
                             loading="lazy"
-                          />
-                          <div
-                            :if={!preview_image_url(@post)}
-                            class="flex h-full items-center justify-center text-xs text-zinc-500"
+                            allowfullscreen
                           >
-                            이미지 없음
-                          </div>
+                          </iframe>
                         </div>
-                        <div class="space-y-1 p-3">
-                          <p class="truncate text-sm font-semibold text-zinc-900">
-                            {display_title(@post)}
-                          </p>
-                          <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
-                          <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
+                      <% else %>
+                        <div
+                          id="link-preview-card"
+                          class="overflow-hidden rounded-lg border border-zinc-200 bg-white"
+                        >
+                          <a
+                            id="preview-card-source"
+                            href={@post.tweet_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            class="block hover:bg-zinc-50"
+                          >
+                            <div class="aspect-[16/9] w-full bg-zinc-100">
+                              <img
+                                :if={preview_image_url(@post)}
+                                id="preview-card-image"
+                                src={preview_image_url(@post)}
+                                alt={display_title(@post)}
+                                class="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                              <div
+                                :if={!preview_image_url(@post)}
+                                class="flex h-full items-center justify-center text-xs text-zinc-500"
+                              >
+                                이미지 없음
+                              </div>
+                            </div>
+                            <div class="space-y-1 p-3">
+                              <p class="truncate text-sm font-semibold text-zinc-900">
+                                {display_title(@post)}
+                              </p>
+                              <p class="text-xs text-zinc-600">{preview_description(@post)}</p>
+                              <p class="truncate text-[11px] text-zinc-500">{@post.tweet_url}</p>
+                            </div>
+                          </a>
                         </div>
-                      </a>
-                    </div>
-                  <% end %>
-                <% end %>
+                      <% end %>
+                    <% end %>
 
-                <div
-                  id="room-embed-highlight-overlay"
-                  phx-hook="EmbedHighlightOverlay"
-                  phx-update="ignore"
-                  data-stage-selector="#room-embed-stage"
-                  data-toggle-selector="#embed-highlight-mode-toggle"
-                  data-clear-selector="#embed-highlight-clear"
-                  data-count-selector="#embed-highlight-count"
-                  data-comment-panel-selector="#embed-highlight-comment-panel"
-                  data-comment-meta-selector="#embed-highlight-comment-meta"
-                  data-comment-readonly-selector="#embed-highlight-comment-readonly"
-                  data-comment-editor-selector="#embed-highlight-comment-editor"
-                  data-comment-input-selector="#embed-highlight-comment-input"
-                  data-comment-save-selector="#embed-highlight-comment-save"
-                  data-comment-close-selector="#embed-highlight-comment-close"
-                  data-session-id={@session_id}
-                  data-user-color={@color}
-                  class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
-                >
+                    <div
+                      id="embed-highlight-comment-panel"
+                      class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-zinc-200 bg-white/95 p-3 shadow-xl backdrop-blur-sm"
+                    >
+                      <div
+                        id="embed-highlight-comment-pointer"
+                        class="absolute h-3 w-3 rotate-45 border border-zinc-200 bg-white"
+                      >
+                      </div>
+
+                      <div class="flex items-center justify-between gap-2">
+                        <p
+                          id="embed-highlight-comment-meta"
+                          class="text-xs font-semibold text-zinc-700"
+                        >
+                          하이라이트
+                        </p>
+                        <button
+                          id="embed-highlight-comment-close"
+                          type="button"
+                          class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-1 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+                        >
+                          <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> 닫기
+                        </button>
+                      </div>
+
+                      <p
+                        id="embed-highlight-comment-readonly"
+                        class="text-sm leading-relaxed text-zinc-800"
+                      >
+                        아직 댓글이 없습니다.
+                      </p>
+
+                      <div id="embed-highlight-comment-editor" class="hidden space-y-2">
+                        <label
+                          for="embed-highlight-comment-input"
+                          class="text-xs font-medium text-zinc-600"
+                        >
+                          이 하이라이트에 남길 코멘트
+                        </label>
+                        <textarea
+                          id="embed-highlight-comment-input"
+                          rows="3"
+                          maxlength="240"
+                          class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-800 outline-none transition focus:border-blue-400"
+                          placeholder="이 하이라이트의 의미를 남겨보세요"
+                        ></textarea>
+                        <div class="flex items-center justify-end gap-2">
+                          <button
+                            id="embed-highlight-comment-save"
+                            type="button"
+                            class="inline-flex items-center gap-1 rounded-full border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+                          >
+                            <.icon name="hero-check" class="h-3.5 w-3.5" /> 댓글 저장
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      id="room-embed-highlight-overlay"
+                      phx-hook="EmbedHighlightOverlay"
+                      phx-update="ignore"
+                      data-stage-selector="#room-embed-content"
+                      data-toggle-selector="#embed-highlight-mode-toggle"
+                      data-clear-selector="#embed-highlight-clear"
+                      data-count-selector="#embed-highlight-count"
+                      data-comment-panel-selector="#embed-highlight-comment-panel"
+                      data-comment-meta-selector="#embed-highlight-comment-meta"
+                      data-comment-readonly-selector="#embed-highlight-comment-readonly"
+                      data-comment-editor-selector="#embed-highlight-comment-editor"
+                      data-comment-input-selector="#embed-highlight-comment-input"
+                      data-comment-save-selector="#embed-highlight-comment-save"
+                      data-comment-close-selector="#embed-highlight-comment-close"
+                      data-comment-pointer-selector="#embed-highlight-comment-pointer"
+                      data-session-id={@session_id}
+                      data-user-color={@color}
+                      class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
+                    >
+                    </div>
+                  </div>
                 </div>
+
+                <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-zinc-500">
+                  임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
+                </p>
               </div>
             <% end %>
 
@@ -652,6 +704,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:selected_version, nil)
         |> assign(:segments, [])
         |> assign(:highlights, [])
+        |> assign(:overlay_highlights, [])
         |> assign(:like_count, 0)
         |> assign(:dislike_count, 0)
         |> assign(:view_count, 0)
@@ -671,6 +724,7 @@ defmodule MatdoriWeb.RoomLive do
         version = selected_version || (post.current_snapshot && post.current_snapshot.version)
         active_snapshot = resolve_snapshot(post, version)
         highlights = if active_snapshot, do: Collab.list_highlights(active_snapshot.id), else: []
+        overlay_highlights = Collab.list_overlay_highlights(post.id)
 
         socket =
           socket
@@ -687,6 +741,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:snapshot_versions, Enum.map(post.snapshots, & &1.version))
         |> assign(:selected_version, active_snapshot && active_snapshot.version)
         |> assign(:highlights, highlights)
+        |> assign(:overlay_highlights, overlay_highlights)
         |> assign(
           :segments,
           build_segments((active_snapshot && active_snapshot.normalized_text) || "", highlights)
@@ -697,6 +752,9 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:liked, Collab.reacted_by?(post.id, socket.assigns.session_id, "like"))
         |> assign(:disliked, Collab.reacted_by?(post.id, socket.assigns.session_id, "dislike"))
         |> assign(:presence_members, presence_members_from_presences(presences))
+        |> push_event("overlay_highlights_state", %{
+          highlights: overlay_highlights_payload(overlay_highlights)
+        })
         |> push_event("presence_state", %{presences: presences, me: socket.assigns.session_id})
     end
   end
@@ -734,7 +792,6 @@ defmodule MatdoriWeb.RoomLive do
         cursor_note_text: "",
         cursor_note_mode: "clear",
         cursor_note_updated_at_ms: 0,
-        overlay_highlights: [],
         overlay_highlight_draft: nil
       })
     end
@@ -960,7 +1017,6 @@ defmodule MatdoriWeb.RoomLive do
       cursor_note_text: "",
       cursor_note_mode: "clear",
       cursor_note_updated_at_ms: 0,
-      overlay_highlights: [],
       overlay_highlight_draft: nil
     }
   end
@@ -980,7 +1036,6 @@ defmodule MatdoriWeb.RoomLive do
       cursor_note_mode: mode,
       cursor_note_updated_at_ms:
         normalize_cursor_note_updated_at_ms(meta_cursor_note_updated_at_ms(meta)),
-      overlay_highlights: normalize_overlay_highlights(meta_overlay_highlights(meta)),
       overlay_highlight_draft:
         normalize_overlay_highlight_zone(meta_overlay_highlight_draft(meta))
     }
@@ -1057,14 +1112,6 @@ defmodule MatdoriWeb.RoomLive do
     end
   end
 
-  defp meta_overlay_highlights(data) do
-    case data do
-      %{overlay_highlights: value} -> value
-      %{"overlay_highlights" => value} -> value
-      _ -> []
-    end
-  end
-
   defp meta_overlay_highlight_draft(data) do
     case data do
       %{overlay_highlight_draft: value} -> value
@@ -1072,20 +1119,6 @@ defmodule MatdoriWeb.RoomLive do
       _ -> nil
     end
   end
-
-  defp normalize_overlay_highlights(value) when is_list(value) do
-    value
-    |> Enum.reduce([], fn zone, acc ->
-      case normalize_overlay_highlight_zone(zone) do
-        nil -> acc
-        normalized -> [normalized | acc]
-      end
-    end)
-    |> Enum.reverse()
-    |> Enum.take(@overlay_highlight_limit)
-  end
-
-  defp normalize_overlay_highlights(_value), do: []
 
   defp normalize_overlay_highlight_zone(zone) when is_map(zone) do
     with {:ok, left} <- normalize_overlay_ratio(Map.get(zone, :left) || Map.get(zone, "left")),
@@ -1240,6 +1273,34 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   defp broadcast_room_metrics(_post_id, _metrics), do: :ok
+
+  defp broadcast_overlay_highlights(post_id) when is_integer(post_id) do
+    Phoenix.PubSub.broadcast(
+      Matdori.PubSub,
+      room_topic(post_id),
+      {:overlay_highlights_updated, post_id}
+    )
+  end
+
+  defp broadcast_overlay_highlights(_post_id), do: :ok
+
+  defp overlay_highlights_payload(highlights) when is_list(highlights) do
+    Enum.map(highlights, fn highlight ->
+      %{
+        session_id: highlight.session_id,
+        display_name: highlight.display_name,
+        color: highlight.color,
+        id: highlight.highlight_key,
+        left: highlight.left,
+        top: highlight.top,
+        width: highlight.width,
+        height: highlight.height,
+        comment: highlight.comment || ""
+      }
+    end)
+  end
+
+  defp overlay_highlights_payload(_), do: []
 
   defp room_topic(post_id), do: "room:#{post_id}"
   defp presence_topic(post_id), do: "presence:#{post_id}"

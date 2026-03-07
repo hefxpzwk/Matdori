@@ -128,6 +128,106 @@ defmodule Matdori.CollabTest do
     assert {:error, :overlap} = Collab.create_highlight(snapshot, overlapping)
   end
 
+  test "replace_overlay_highlights/2 persists highlights and replaces same session set" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, first_saved} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-a",
+               display_name: "Alice",
+               color: "#123456",
+               highlights: [
+                 %{
+                   "id" => "a-1",
+                   "left" => 0.1,
+                   "top" => 0.2,
+                   "width" => 0.25,
+                   "height" => 0.3,
+                   "comment" => "첫 코멘트"
+                 },
+                 %{
+                   "id" => "a-2",
+                   "left" => 0.4,
+                   "top" => 0.25,
+                   "width" => 0.1,
+                   "height" => 0.15,
+                   "comment" => "둘째 코멘트"
+                 }
+               ]
+             })
+
+    assert length(first_saved) == 2
+
+    assert Enum.count(
+             Collab.list_overlay_highlights(post.id),
+             &(&1.session_id == "session-overlay-a")
+           ) == 2
+
+    assert {:ok, second_saved} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-a",
+               display_name: "Alice",
+               color: "#123456",
+               highlights: [
+                 %{
+                   "id" => "a-3",
+                   "left" => 0.15,
+                   "top" => 0.35,
+                   "width" => 0.22,
+                   "height" => 0.18,
+                   "comment" => "교체됨"
+                 }
+               ]
+             })
+
+    assert length(second_saved) == 1
+
+    assert [%{highlight_key: "a-3", comment: "교체됨"}] =
+             Collab.list_overlay_highlights(post.id)
+             |> Enum.filter(&(&1.session_id == "session-overlay-a"))
+  end
+
+  test "replace_overlay_highlights/2 only replaces requesting session highlights" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-a",
+               display_name: "Alice",
+               color: "#111111",
+               highlights: [
+                 %{"id" => "a-1", "left" => 0.1, "top" => 0.1, "width" => 0.2, "height" => 0.2}
+               ]
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-b",
+               display_name: "Bob",
+               color: "#222222",
+               highlights: [
+                 %{"id" => "b-1", "left" => 0.5, "top" => 0.2, "width" => 0.2, "height" => 0.2}
+               ]
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-a",
+               display_name: "Alice",
+               color: "#111111",
+               highlights: []
+             })
+
+    remaining = Collab.list_overlay_highlights(post.id)
+
+    assert Enum.any?(
+             remaining,
+             &(&1.session_id == "session-overlay-b" and &1.highlight_key == "b-1")
+           )
+
+    refute Enum.any?(remaining, &(&1.session_id == "session-overlay-a"))
+  end
+
   test "sync_configured_account_posts/1 imports posts and latest order follows tweet_posted_at" do
     older = System.unique_integer([:positive])
     newer = System.unique_integer([:positive])
