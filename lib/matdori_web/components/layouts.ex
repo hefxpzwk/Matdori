@@ -31,6 +31,10 @@ defmodule MatdoriWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :topbar, :map,
+    default: %{mode: :default},
+    doc: "topbar configuration"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -40,10 +44,13 @@ defmodule MatdoriWeb.Layouts do
       |> assign(:display_name, scope_display_name(assigns[:current_scope]))
       |> assign(:email, scope_email(assigns[:current_scope]))
       |> assign(:avatar_url, scope_avatar_url(assigns[:current_scope]))
+      |> assign(:topbar_mode, topbar_mode(assigns[:topbar]))
+      |> assign(:topbar_title, topbar_title(assigns[:topbar]))
+      |> assign(:topbar_refresh_event, topbar_refresh_event(assigns[:topbar]))
 
     ~H"""
     <div class="mat-shell min-h-screen">
-      <section class="mx-auto w-full max-w-[1320px] px-3 py-3 sm:px-4 sm:py-4">
+      <section class="mx-auto h-full w-full max-w-[1320px] px-3 sm:px-4">
         <div class="x-home-grid x-home-grid--wide">
           <aside id="x-left-rail" class="x-left-rail">
             <a href="/" class="x-rail-logo">
@@ -118,15 +125,47 @@ defmodule MatdoriWeb.Layouts do
           </aside>
 
           <main id="x-main-column" class="x-main-column">
-            <header class="x-main-topbar">
+            <header :if={@topbar_mode == :default} class="x-main-topbar">
               <a href={~p"/"} class="x-main-tab">추천</a>
-              <a href={~p"/rooms"} class="x-main-tab">방 목록</a>
-              <.link :if={@authenticated and @display_name} navigate={~p"/me"} class="x-main-tab">
-                마이페이지
-              </.link>
-              <a :if={!(@authenticated and @display_name)} href={~p"/login"} class="x-main-tab">
-                로그인
-              </a>
+              <a href={~p"/rooms"} class="x-main-tab">검색</a>
+            </header>
+
+            <header :if={@topbar_mode == :room} class="x-main-topbar x-main-topbar--room">
+              <button
+                id="room-topbar-back"
+                type="button"
+                class="x-room-topbar-back"
+                phx-click={JS.dispatch("matdori:history-back")}
+              >
+                <.icon name="hero-arrow-left" class="size-5" />
+              </button>
+              <button
+                id="room-topbar-title"
+                type="button"
+                class="x-room-topbar-title"
+                phx-click={@topbar_refresh_event}
+              >
+                {@topbar_title}
+              </button>
+            </header>
+
+            <header :if={@topbar_mode == :profile} class="x-main-topbar x-main-topbar--profile">
+              <button
+                id="profile-topbar-back"
+                type="button"
+                class="x-profile-topbar-back"
+                phx-click={JS.dispatch("matdori:history-back")}
+              >
+                <.icon name="hero-arrow-left" class="size-5" />
+              </button>
+              <button
+                id="profile-topbar-title"
+                type="button"
+                class="x-profile-topbar-title"
+                phx-click={@topbar_refresh_event}
+              >
+                프로필
+              </button>
             </header>
 
             <div class="x-page-content">
@@ -208,6 +247,18 @@ defmodule MatdoriWeb.Layouts do
   defp scope_avatar_url(%{avatar_url: url}) when is_binary(url) and url != "", do: url
   defp scope_avatar_url(%{"avatar_url" => url}) when is_binary(url) and url != "", do: url
   defp scope_avatar_url(_), do: nil
+
+  defp topbar_mode(%{mode: :room}), do: :room
+  defp topbar_mode(%{mode: :profile}), do: :profile
+  defp topbar_mode(_), do: :default
+
+  defp topbar_title(%{title: title}) when is_binary(title) and title != "", do: title
+  defp topbar_title(_), do: "방"
+
+  defp topbar_refresh_event(%{refresh_event: event}) when is_binary(event) and event != "",
+    do: event
+
+  defp topbar_refresh_event(_), do: nil
 
   defp scope_authenticated(%{authenticated: true}), do: true
   defp scope_authenticated(%{"authenticated" => true}), do: true

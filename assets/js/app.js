@@ -46,6 +46,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#ffffff"}, shadowColor: "rgba(255, 255, 255, 0.3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+window.addEventListener("matdori:history-back", _event => window.history.back())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

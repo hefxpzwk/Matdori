@@ -1,6 +1,8 @@
 defmodule MatdoriWeb.Plugs.Identity do
   import Plug.Conn
 
+  alias Matdori.Collab
+
   @colors [
     "#ef4444",
     "#f97316",
@@ -29,14 +31,29 @@ defmodule MatdoriWeb.Plugs.Identity do
   end
 
   defp ensure_display_name(conn) do
+    profile_name =
+      conn
+      |> get_session(:google_uid)
+      |> profile_display_name()
+
     display_name =
-      get_session(conn, :google_name) ||
-        get_session(conn, :google_email) ||
-        get_session(conn, :display_name)
+      profile_name ||
+        get_session(conn, :display_name) ||
+        get_session(conn, :google_name) ||
+        get_session(conn, :google_email)
 
     normalized = normalize_display_name(display_name)
     put_session(conn, :display_name, normalized)
   end
+
+  defp profile_display_name(google_uid) when is_binary(google_uid) and google_uid != "" do
+    case Collab.get_profile_by_google_uid(google_uid) do
+      %{display_name: name} when is_binary(name) and name != "" -> name
+      _ -> nil
+    end
+  end
+
+  defp profile_display_name(_google_uid), do: nil
 
   defp ensure_color(conn) do
     case get_session(conn, :color) do

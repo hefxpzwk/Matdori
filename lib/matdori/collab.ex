@@ -16,7 +16,8 @@ defmodule Matdori.Collab do
     PostHeart,
     PostView,
     Report,
-    OverlayHighlight
+    OverlayHighlight,
+    UserProfile
   }
 
   @reaction_kinds ~w(like dislike)
@@ -82,6 +83,83 @@ defmodule Matdori.Collab do
     sort = opts |> Keyword.get(:sort, "latest") |> normalize_list_sort()
     Repo.all(posts_query(limit, sort))
   end
+
+  def get_profile_by_google_uid(google_uid) when is_binary(google_uid) do
+    uid = normalize_google_uid(google_uid)
+
+    if uid do
+      case Repo.get_by(UserProfile, google_uid: uid) do
+        nil ->
+          %{display_name: nil, interests: []}
+
+        profile ->
+          %{
+            display_name: normalize_profile_display_name(profile.display_name),
+            interests: normalize_interests(profile.interests || infer_interests(profile.interest))
+          }
+      end
+    else
+      %{display_name: nil, interests: []}
+    end
+  end
+
+  def get_profile_by_google_uid(_google_uid), do: %{display_name: nil, interests: []}
+
+  def get_interest_by_google_uid(google_uid) do
+    google_uid
+    |> get_profile_by_google_uid()
+    |> Map.get(:interests, [])
+    |> Enum.join(", ")
+  end
+
+  def upsert_profile_by_google_uid(google_uid, attrs)
+      when is_binary(google_uid) and is_map(attrs) do
+    uid = normalize_google_uid(google_uid)
+
+    if uid do
+      cleaned_name = normalize_profile_display_name(attrs["display_name"] || attrs[:display_name])
+      cleaned_interests = normalize_interests(attrs["interests"] || attrs[:interests])
+      fallback_interest = List.first(cleaned_interests) || ""
+
+      profile = Repo.get_by(UserProfile, google_uid: uid) || %UserProfile{google_uid: uid}
+      resolved_name = cleaned_name || normalize_profile_display_name(profile.display_name)
+
+      Multi.new()
+      |> Multi.insert_or_update(
+        :profile,
+        UserProfile.changeset(profile, %{
+          google_uid: uid,
+          display_name: resolved_name,
+          interests: cleaned_interests,
+          interest: fallback_interest
+        })
+      )
+      |> Multi.run(:sync_display_names, fn _repo, _changes ->
+        sync_display_name_for_google_uid(uid, resolved_name)
+      end)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{profile: saved_profile}} -> {:ok, saved_profile}
+        {:error, :profile, reason, _changes} -> {:error, reason}
+        {:error, _step, reason, _changes} -> {:error, reason}
+      end
+    else
+      {:error, :invalid_google_uid}
+    end
+  end
+
+  def upsert_profile_by_google_uid(_google_uid, _attrs), do: {:error, :invalid_google_uid}
+
+  def upsert_interest_by_google_uid(google_uid, interest) when is_binary(google_uid) do
+    interests = normalize_interests(interest)
+
+    case upsert_profile_by_google_uid(google_uid, %{display_name: nil, interests: interests}) do
+      {:ok, profile} -> {:ok, profile}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def upsert_interest_by_google_uid(_google_uid, _interest), do: {:error, :invalid_google_uid}
 
   def list_created_posts_by_google_uid(google_uid, limit \\ 100)
 
@@ -463,6 +541,7 @@ defmodule Matdori.Collab do
     |> Comment.changeset(%{
       highlight_id: highlight_id,
       session_id: attrs["session_id"],
+      google_uid: normalize_google_uid(attrs["google_uid"]),
       display_name: attrs["display_name"],
       body: attrs["body"]
     })
@@ -574,10 +653,37 @@ defmodule Matdori.Collab do
     |> Report.changeset(%{
       post_id: post_id,
       session_id: attrs["session_id"],
+      google_uid: normalize_google_uid(attrs["google_uid"]),
       display_name: attrs["display_name"],
       reason: attrs["reason"]
     })
     |> Repo.insert()
+  end
+
+  defp sync_display_name_for_google_uid(_google_uid, nil), do: {:ok, :skipped}
+
+  defp sync_display_name_for_google_uid(google_uid, display_name) do
+    Repo.update_all(
+      from(h in Highlight, where: h.google_uid == ^google_uid),
+      set: [display_name: display_name]
+    )
+
+    Repo.update_all(
+      from(h in OverlayHighlight, where: h.google_uid == ^google_uid),
+      set: [display_name: display_name]
+    )
+
+    Repo.update_all(
+      from(c in Comment, where: c.google_uid == ^google_uid),
+      set: [display_name: display_name]
+    )
+
+    Repo.update_all(
+      from(r in Report, where: r.google_uid == ^google_uid),
+      set: [display_name: display_name]
+    )
+
+    {:ok, :synced}
   end
 
   def list_reports do
@@ -1053,6 +1159,48 @@ defmodule Matdori.Collab do
   end
 
   defp normalize_session_id(_value), do: nil
+
+  defp normalize_interest(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.slice(0, 160)
+  end
+
+  defp normalize_interest(_value), do: ""
+
+  defp normalize_profile_display_name(value) when is_binary(value) do
+    value
+    |> String.trim()
+    |> String.replace(~r/\s+/, " ")
+    |> String.slice(0, 30)
+    |> case do
+      "" -> nil
+      cleaned -> cleaned
+    end
+  end
+
+  defp normalize_profile_display_name(_value), do: nil
+
+  defp normalize_interests(value) when is_binary(value) do
+    value
+    |> String.split([",", "\n", "|"], trim: true)
+    |> normalize_interests()
+  end
+
+  defp normalize_interests(values) when is_list(values) do
+    values
+    |> Enum.map(&normalize_interest/1)
+    |> Enum.filter(&(&1 != ""))
+    |> Enum.uniq()
+    |> Enum.take(12)
+  end
+
+  defp normalize_interests(_), do: []
+
+  defp infer_interests(value) when is_binary(value) and value != "",
+    do: [normalize_interest(value)]
+
+  defp infer_interests(_), do: []
 
   defp highlight_owner_dynamic(uid, sid) when is_binary(uid) and is_binary(sid) do
     dynamic([h], h.google_uid == ^uid or (is_nil(h.google_uid) and h.session_id == ^sid))

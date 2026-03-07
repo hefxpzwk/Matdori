@@ -37,10 +37,7 @@ body {
   color: var(--mat-text);
   font-family: "SUIT Variable", "Pretendard Variable", "Noto Sans KR", "Apple SD Gothic Neo",
     "Segoe UI", sans-serif;
-  background:
-    radial-gradient(56rem 28rem at 10% -8%, rgb(29 78 216 / 8%), transparent 62%),
-    radial-gradient(48rem 26rem at 92% 4%, rgb(15 23 42 / 5%), transparent 58%),
-    linear-gradient(180deg, #f8f9fd 0%, #ffffff 46%, #f7f8fc 100%);
+  background: #ffffff;
   text-rendering: optimizeLegibility;
 }
 
@@ -71,6 +68,8 @@ select:focus-visible {
 .mat-shell {
   position: relative;
   min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
   color: var(--mat-text);
   isolation: isolate;
 }
@@ -90,13 +89,13 @@ select:focus-visible {
 .mat-shell::before {
   top: -12rem;
   left: -9rem;
-  background: rgb(59 130 246 / 12%);
+  background: transparent;
 }
 
 .mat-shell::after {
   right: -10rem;
   bottom: -12rem;
-  background: rgb(15 23 42 / 7%);
+  background: transparent;
 }
 
 .mat-surface {
@@ -345,11 +344,8 @@ select:focus-visible {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
-  border: 1px solid rgb(15 23 42 / 10%);
-  border-radius: 1.3rem;
-  overflow: hidden;
-  background: rgb(255 255 255 / 95%);
-  box-shadow: 0 16px 36px rgb(15 23 42 / 10%);
+  height: 100%;
+  background: #ffffff;
 }
 
 .x-left-rail,
@@ -359,10 +355,17 @@ select:focus-visible {
 
 .x-page-content {
   padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .x-main-column {
-  min-height: calc(100vh - 4.5rem);
+  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid rgb(15 23 42 / 8%);
   border-right: 1px solid rgb(15 23 42 / 8%);
   background: #ffffff;
@@ -373,11 +376,23 @@ select:focus-visible {
   top: 0;
   z-index: 25;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   border-bottom: 1px solid rgb(15 23 42 / 10%);
   background: rgb(255 255 255 / 92%);
   backdrop-filter: blur(10px);
+}
+
+.x-main-topbar--room {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0 0.55rem;
+}
+
+.x-main-topbar--profile {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  padding: 0 0.55rem;
 }
 
 .x-main-tab {
@@ -400,6 +415,240 @@ select:focus-visible {
 .x-main-tab.is-active {
   color: #0f172a;
   box-shadow: inset 0 -3px 0 #0f172a;
+}
+
+.x-room-topbar-back,
+.x-room-topbar-title {
+  min-height: 3.4rem;
+  border: 0;
+  background: transparent;
+  color: #111827;
+}
+
+.x-room-topbar-back {
+  width: 2.45rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 180ms ease;
+}
+
+.x-room-topbar-back:hover {
+  background: #f1f5f9;
+}
+
+.x-room-topbar-title {
+  text-align: left;
+  padding-inline: 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 760;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.x-room-topbar-title:hover {
+  color: #020617;
+}
+
+.x-profile-topbar-title {
+  min-height: 3.4rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding-inline: 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 760;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.x-profile-topbar-title:hover {
+  color: #020617;
+}
+
+.x-profile-topbar-back {
+  min-height: 3.4rem;
+  width: 2.45rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #111827;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 180ms ease;
+}
+
+.x-profile-topbar-back:hover {
+  background: #f1f5f9;
+}
+
+.my-profile-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.my-profile-avatar-wrap {
+  width: 5.9rem;
+  height: 5.9rem;
+}
+
+.my-profile-avatar,
+.my-profile-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  border: 1px solid rgb(15 23 42 / 14%);
+}
+
+.my-profile-avatar {
+  object-fit: cover;
+}
+
+.my-profile-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f8fafc;
+  color: #334155;
+}
+
+.my-profile-meta {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.my-profile-edit-btn {
+  align-self: start;
+  justify-content: center;
+  min-height: 2.2rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.my-profile-interest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  color: #475569;
+  min-height: 1.4rem;
+}
+
+.my-interest-chip {
+  font-size: 0.72rem;
+  padding: 0.28rem 0.6rem;
+}
+
+.my-profile-tabs {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.my-profile-tab {
+  min-height: 2.2rem;
+  border-radius: 999px;
+  border: 1px solid rgb(15 23 42 / 13%);
+  background: #ffffff;
+  color: #334155;
+  padding: 0 0.85rem;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+.my-profile-tab:hover {
+  border-color: rgb(15 23 42 / 24%);
+  color: #0f172a;
+}
+
+.my-profile-tab.is-active {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
+}
+
+.my-profile-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 34%);
+  backdrop-filter: blur(3px);
+}
+
+.my-profile-modal-card {
+  width: min(100%, 30rem);
+  border-radius: 1rem;
+  border: 1px solid rgb(15 23 42 / 14%);
+  background: #ffffff;
+  box-shadow: 0 20px 42px rgb(15 23 42 / 18%);
+  padding: 0.95rem;
+}
+
+.my-profile-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.5rem;
+}
+
+.my-profile-modal-close {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgb(15 23 42 / 12%);
+  background: #ffffff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.my-profile-modal-close:hover {
+  background: #f8fafc;
+}
+
+.my-profile-edit-form {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.my-profile-modal-help {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.my-profile-modal-actions {
+  margin-top: 0.25rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .my-profile-head {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
 }
 
 .x-compose-wrap {
@@ -507,6 +756,38 @@ select:focus-visible {
   line-height: 1.5;
 }
 
+.x-feed-wrap {
+  padding: 0.9rem 0.7rem 1.1rem;
+}
+
+.x-feed-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.x-feed-select {
+  min-width: 10.5rem;
+  height: 2.3rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(15 23 42 / 14%);
+  background: #ffffff;
+  color: #111827;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 0 0.7rem;
+}
+
+.x-feed-empty {
+  border: 1px solid rgb(15 23 42 / 10%);
+  border-radius: 0.95rem;
+  background: #ffffff;
+  padding: 0.9rem;
+  font-size: 0.86rem;
+  color: #4b5563;
+}
+
 .x-right-card {
   border: 1px solid rgb(15 23 42 / 10%);
   border-radius: 1.05rem;
@@ -557,7 +838,7 @@ select:focus-visible {
     position: sticky;
     top: 0;
     align-self: start;
-    min-height: calc(100vh - 4.5rem);
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     padding: 1rem 0.75rem;

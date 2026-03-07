@@ -10,7 +10,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert to == ~p"/login"
   end
 
-  test "my page shows created, liked, and highlighted rooms", %{conn: conn} do
+  test "my page shows profile header and tabbed room sections", %{conn: conn} do
     google_uid = "google-my-page-user"
 
     conn =
@@ -74,9 +74,73 @@ defmodule MatdoriWeb.MyPageLiveTest do
     {:ok, view, _html} = live(conn, ~p"/me")
 
     assert has_element?(view, "#my-page")
+    assert has_element?(view, "#profile-topbar-back")
+    assert has_element?(view, "#profile-topbar-title", "프로필")
+    assert has_element?(view, "#my-profile-header")
+    assert has_element?(view, "#my-profile-name", "My Page User")
+    assert has_element?(view, "#my-profile-interest")
+    refute render(view) =~ "협업 리딩"
+    assert has_element?(view, "#my-tab-created")
+    assert has_element?(view, "#my-tab-highlighted")
+    assert has_element?(view, "#my-tab-liked")
+    assert has_element?(view, "#my-profile-edit-toggle")
+    refute has_element?(view, "#my-profile-edit-modal")
+
     assert has_element?(view, "#my-created-room-#{created_post.id}")
+    refute has_element?(view, "#my-liked-room-#{liked_post.id}")
+    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+
+    _html = view |> element("#my-tab-liked") |> render_click()
     assert has_element?(view, "#my-liked-room-#{liked_post.id}")
+    refute has_element?(view, "#my-created-room-#{created_post.id}")
+
+    _html = view |> element("#my-tab-highlighted") |> render_click()
     assert has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    refute has_element?(view, "#my-liked-room-#{liked_post.id}")
+
+    _html = view |> element("#my-profile-edit-toggle") |> render_click()
+    assert has_element?(view, "#my-profile-edit-modal")
+    assert has_element?(view, "#my-profile-edit-form")
+    assert has_element?(view, "#my-profile-name-input")
+    assert has_element?(view, "#my-profile-interests-input")
+
+    _html =
+      view
+      |> form("#my-profile-edit-form", %{
+        "profile" => %{
+          "display_name" => "수정된 유저",
+          "interests_input" => "AI · 디자인 시스템, 제품 전략, AI · 디자인 시스템"
+        }
+      })
+      |> render_submit()
+
+    assert has_element?(view, "#my-profile-name", "수정된 유저")
+    assert has_element?(view, "#my-profile-interest", "AI · 디자인 시스템")
+    assert has_element?(view, "#my-profile-interest", "제품 전략")
+    refute has_element?(view, "#my-profile-edit-modal")
+
+    _html = view |> element("#profile-topbar-title") |> render_click()
+
+    assert has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    assert has_element?(view, "#my-profile-name", "수정된 유저")
+    assert has_element?(view, "#my-profile-interest", "AI · 디자인 시스템")
+  end
+
+  test "profile edit validates blank display name", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    {:ok, view, _html} = live(conn, ~p"/me")
+
+    _html = view |> element("#my-profile-edit-toggle") |> render_click()
+
+    _html =
+      view
+      |> form("#my-profile-edit-form", %{
+        "profile" => %{"display_name" => "", "interests_input" => "AI"}
+      })
+      |> render_submit()
+
+    assert render(view) =~ "사용자 이름을 입력해 주세요"
+    assert has_element?(view, "#my-profile-edit-modal")
   end
 
   test "my page includes overlay-highlighted rooms", %{conn: conn} do
@@ -120,6 +184,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
              })
 
     {:ok, view, _html} = live(conn, ~p"/me")
+    _html = view |> element("#my-tab-highlighted") |> render_click()
     assert has_element?(view, "#my-highlighted-room-#{overlay_post.id}")
   end
 end

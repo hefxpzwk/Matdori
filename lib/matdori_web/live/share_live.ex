@@ -3,8 +3,11 @@ defmodule MatdoriWeb.ShareLive do
 
   alias Matdori.Collab
   alias Matdori.RateLimiter
+  alias MatdoriWeb.Presence
 
   @action_limit 20
+  @feed_limit 60
+  @feed_refresh_ms 6_000
 
   @impl true
   def mount(_params, session, socket) do
@@ -20,7 +23,23 @@ defmodule MatdoriWeb.ShareLive do
      |> assign(:authenticated, authenticated)
      |> assign(:composer_mode, :search)
      |> assign(:search_status, :idle)
+     |> assign(:feed_sort, "latest")
+     |> assign(:feed_posts, [])
+     |> assign(:active_counts, %{})
+     |> assign(:feed_loaded?, false)
      |> assign(:share_form, empty_share_form())}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    sort = params |> Map.get("sort", socket.assigns.feed_sort) |> normalize_feed_sort()
+
+    socket =
+      socket
+      |> assign_feed(sort)
+      |> maybe_schedule_feed_refresh()
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -131,6 +150,22 @@ defmodule MatdoriWeb.ShareLive do
   end
 
   @impl true
+  def handle_event("set_feed_sort", %{"sort" => sort}, socket) do
+    next_sort = normalize_feed_sort(sort)
+    {:noreply, assign_feed(socket, next_sort)}
+  end
+
+  @impl true
+  def handle_info(:refresh_feed, socket) do
+    socket =
+      socket
+      |> assign_feed(socket.assigns.feed_sort)
+      |> maybe_schedule_feed_refresh()
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app
@@ -211,6 +246,44 @@ defmodule MatdoriWeb.ShareLive do
           </div>
         <% end %>
       </section>
+
+      <section id="share-feed" class="x-feed-wrap">
+        <div id="share-feed-controls" class="x-feed-controls">
+          <form id="share-feed-sort-form" phx-change="set_feed_sort">
+            <select id="share-feed-sort" name="sort" class="x-feed-select">
+              <option value="latest" selected={@feed_sort == "latest"}>최신순</option>
+              <option value="views" selected={@feed_sort == "views"}>조회순</option>
+              <option value="live" selected={@feed_sort == "live"}>실시간 인기순</option>
+            </select>
+          </form>
+        </div>
+
+        <%= if @feed_posts == [] do %>
+          <div id="share-feed-empty" class="x-feed-empty">아직 방이 없습니다. 첫 방을 만들어 보세요.</div>
+        <% else %>
+          <div id="share-feed-list" class="space-y-2.5">
+            <%= for post <- @feed_posts do %>
+              <.link
+                id={"share-feed-item-#{post.id}"}
+                navigate={~p"/rooms/#{post.id}"}
+                class="mat-card block p-3"
+              >
+                <div class="flex items-center gap-2.5">
+                  <p class="truncate text-sm font-bold text-slate-900">{display_title(post)}</p>
+                  <span class="mat-pill px-2.5 py-1 text-[11px]">
+                    현재 접속 {Map.get(@active_counts, post.id, 0)}
+                  </span>
+                </div>
+                <p class="mt-1 truncate text-xs text-slate-500">{post.tweet_url}</p>
+                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                  <span id={"share-feed-view-count-#{post.id}"}>조회수 {post.view_count}</span>
+                  <span id={"share-feed-like-count-#{post.id}"}>좋아요 {post.like_count}</span>
+                </div>
+              </.link>
+            <% end %>
+          </div>
+        <% end %>
+      </section>
     </Layouts.app>
     """
   end
@@ -233,6 +306,72 @@ defmodule MatdoriWeb.ShareLive do
       "title" => socket.assigns.share_form[:title].value || "",
       "tweet_url" => socket.assigns.share_form[:tweet_url].value || ""
     }
+  end
+
+  defp maybe_schedule_feed_refresh(socket) do
+    if connected?(socket) do
+      Process.send_after(self(), :refresh_feed, @feed_refresh_ms)
+    end
+
+    socket
+  end
+
+  defp assign_feed(socket, sort) do
+    posts =
+      case sort do
+        "views" -> Collab.list_posts(@feed_limit, sort: "views")
+        "live" -> Collab.list_posts(@feed_limit, sort: "latest")
+        _ -> Collab.list_posts(@feed_limit, sort: "latest")
+      end
+
+    active_counts = active_counts_map(posts)
+
+    sorted_posts =
+      case sort do
+        "live" ->
+          Enum.sort_by(
+            posts,
+            fn post ->
+              {Map.get(active_counts, post.id, 0), post.inserted_at, post.id}
+            end,
+            :desc
+          )
+
+        _ ->
+          posts
+      end
+
+    socket
+    |> assign(:feed_sort, sort)
+    |> assign(:feed_posts, sorted_posts)
+    |> assign(:active_counts, active_counts)
+    |> assign(:feed_loaded?, true)
+  end
+
+  defp active_counts_map(posts) do
+    posts
+    |> Enum.map(fn post ->
+      count =
+        post.id
+        |> presence_topic()
+        |> Presence.list()
+        |> map_size()
+
+      {post.id, count}
+    end)
+    |> Map.new()
+  end
+
+  defp presence_topic(post_id), do: "presence:#{post_id}"
+
+  defp normalize_feed_sort(sort) when sort in ["latest", "views", "live"], do: sort
+  defp normalize_feed_sort(_sort), do: "latest"
+
+  defp display_title(post) do
+    case String.trim(post.title || "") do
+      "" -> "제목 없는 공유"
+      title -> title
+    end
   end
 
   defp logged_in?(session) when is_map(session) do

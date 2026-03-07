@@ -220,6 +220,7 @@ defmodule MatdoriWeb.RoomLive do
          {:ok, _comment} <-
            Collab.create_comment(selected, %{
              "session_id" => socket.assigns.session_id,
+             "google_uid" => socket.assigns.google_uid,
              "display_name" => socket.assigns.display_name,
              "body" => body
            }) do
@@ -310,6 +311,7 @@ defmodule MatdoriWeb.RoomLive do
          {:ok, _} <-
            Collab.create_report(post_id, %{
              "session_id" => socket.assigns.session_id,
+             "google_uid" => socket.assigns.google_uid,
              "display_name" => socket.assigns.display_name,
              "reason" => reason
            }) do
@@ -356,6 +358,11 @@ defmodule MatdoriWeb.RoomLive do
 
   def handle_event("dismiss_privacy", _params, socket) do
     {:noreply, assign(socket, :privacy_notice_open, false)}
+  end
+
+  @impl true
+  def handle_event("refresh_room_topbar", _params, socket) do
+    {:noreply, reload_current_room(socket)}
   end
 
   @impl true
@@ -417,16 +424,15 @@ defmodule MatdoriWeb.RoomLive do
           authenticated: @authenticated
         }
       }
+      topbar={
+        %{
+          mode: :room,
+          title: if(@post, do: display_title(@post), else: "방"),
+          refresh_event: "refresh_room_topbar"
+        }
+      }
     >
       <section class="space-y-5" id="room-detail">
-        <.link
-          id="back-to-room-list"
-          navigate={~p"/rooms"}
-          class="mat-btn-secondary"
-        >
-          방 목록으로
-        </.link>
-
         <%= if @post do %>
           <article
             id="room-collab-stage"

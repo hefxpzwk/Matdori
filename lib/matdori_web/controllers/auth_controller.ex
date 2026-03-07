@@ -1,6 +1,8 @@
 defmodule MatdoriWeb.AuthController do
   use MatdoriWeb, :controller
 
+  alias Matdori.Collab
+
   plug Ueberauth when action in [:request, :callback]
 
   def login(conn, _params) do
@@ -23,6 +25,7 @@ defmodule MatdoriWeb.AuthController do
 
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     return_to = get_session(conn, :user_return_to) || ~p"/"
+    display_name = profile_or_google_display_name(auth.uid, auth.info.name, auth.info.email)
 
     conn
     |> configure_session(renew: true)
@@ -31,7 +34,7 @@ defmodule MatdoriWeb.AuthController do
     |> put_session(:google_name, auth.info.name)
     |> put_session(:google_avatar, auth.info.image)
     |> put_session(:session_id, Ecto.UUID.generate())
-    |> put_session(:display_name, normalize_display_name(auth.info.name, auth.info.email))
+    |> put_session(:display_name, display_name)
     |> redirect(to: return_to)
   end
 
@@ -67,4 +70,14 @@ defmodule MatdoriWeb.AuthController do
   end
 
   defp normalize_display_name(_name, _email), do: "Google User"
+
+  defp profile_or_google_display_name(google_uid, google_name, google_email) do
+    case Collab.get_profile_by_google_uid(google_uid) do
+      %{display_name: name} when is_binary(name) and name != "" ->
+        name
+
+      _ ->
+        normalize_display_name(google_name, google_email)
+    end
+  end
 end

@@ -2,7 +2,7 @@ defmodule Matdori.CollabTest do
   use Matdori.DataCase, async: false
 
   alias Matdori.Collab
-  alias Matdori.Collab.{Post, PostSnapshot}
+  alias Matdori.Collab.{Comment, Highlight, OverlayHighlight, Post, PostSnapshot, Report}
 
   test "toggle_reaction/3 toggles like and dislike, with single reaction per session" do
     post = insert_post_with_snapshot()
@@ -226,6 +226,81 @@ defmodule Matdori.CollabTest do
            )
 
     refute Enum.any?(remaining, &(&1.session_id == "session-overlay-a"))
+  end
+
+  test "upsert_profile_by_google_uid/2 syncs display_name to authored artifacts" do
+    post = insert_post_with_snapshot()
+    snapshot = Repo.preload(post, :current_snapshot).current_snapshot
+    google_uid = "google-sync-user"
+
+    assert {:ok, highlight} =
+             Collab.create_highlight(snapshot, %{
+               "session_id" => "sync-session",
+               "google_uid" => google_uid,
+               "display_name" => "이전 이름",
+               "color" => "#111111",
+               "quote_exact" => "Hello",
+               "quote_prefix" => "",
+               "quote_suffix" => "",
+               "start_g" => 0,
+               "end_g" => 5
+             })
+
+    assert {:ok, _comment} =
+             Collab.create_comment(highlight.id, %{
+               "session_id" => "sync-session",
+               "google_uid" => google_uid,
+               "display_name" => "이전 이름",
+               "body" => "이전 댓글"
+             })
+
+    assert {:ok, _report} =
+             Collab.create_report(post.id, %{
+               "session_id" => "sync-session",
+               "google_uid" => google_uid,
+               "display_name" => "이전 이름",
+               "reason" => "충분히 긴 신고 사유"
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "sync-session",
+               google_uid: google_uid,
+               display_name: "이전 이름",
+               color: "#111111",
+               highlights: [
+                 %{
+                   "id" => "sync-overlay",
+                   "left" => 0.1,
+                   "top" => 0.1,
+                   "width" => 0.2,
+                   "height" => 0.2,
+                   "comment" => "메모"
+                 }
+               ]
+             })
+
+    assert {:ok, _profile} =
+             Collab.upsert_profile_by_google_uid(google_uid, %{
+               display_name: "새 이름",
+               interests: ["AI"]
+             })
+
+    assert Repo.get!(Highlight, highlight.id).display_name == "새 이름"
+
+    assert Repo.one!(
+             from c in Comment, where: c.google_uid == ^google_uid, select: c.display_name
+           ) ==
+             "새 이름"
+
+    assert Repo.one!(from r in Report, where: r.google_uid == ^google_uid, select: r.display_name) ==
+             "새 이름"
+
+    assert Repo.one!(
+             from o in OverlayHighlight,
+               where: o.google_uid == ^google_uid,
+               select: o.display_name
+           ) == "새 이름"
   end
 
   test "sync_configured_account_posts/1 imports posts and latest order follows tweet_posted_at" do
