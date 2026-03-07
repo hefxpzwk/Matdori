@@ -12,9 +12,6 @@ defmodule MatdoriWeb.Plugs.Identity do
     "#ec4899"
   ]
 
-  @adjectives ~w(Bright Swift Warm Calm Bold Quiet Focused Lively)
-  @animals ~w(Fox Whale Sparrow Koala Raven Otter Lynx Panda)
-
   def init(opts), do: opts
 
   def call(conn, _opts) do
@@ -32,14 +29,13 @@ defmodule MatdoriWeb.Plugs.Identity do
   end
 
   defp ensure_display_name(conn) do
-    case get_session(conn, :display_name) do
-      nil ->
-        name = "#{Enum.random(@adjectives)} #{Enum.random(@animals)}"
-        put_session(conn, :display_name, name)
+    display_name =
+      get_session(conn, :google_name) ||
+        get_session(conn, :google_email) ||
+        get_session(conn, :display_name)
 
-      _ ->
-        conn
-    end
+    normalized = normalize_display_name(display_name)
+    put_session(conn, :display_name, normalized)
   end
 
   defp ensure_color(conn) do
@@ -48,4 +44,13 @@ defmodule MatdoriWeb.Plugs.Identity do
       _ -> conn
     end
   end
+
+  defp normalize_display_name(name) when is_binary(name) do
+    case String.trim(name) do
+      "" -> "Google User"
+      value -> String.slice(value, 0, 30)
+    end
+  end
+
+  defp normalize_display_name(_), do: "Google User"
 end

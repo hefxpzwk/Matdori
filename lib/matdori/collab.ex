@@ -83,13 +83,116 @@ defmodule Matdori.Collab do
     Repo.all(posts_query(limit, sort))
   end
 
+  def list_created_posts_by_google_uid(google_uid, limit \\ 100)
+
+  def list_created_posts_by_google_uid(google_uid, limit)
+      when is_binary(google_uid) and is_integer(limit) and limit > 0 do
+    uid = normalize_google_uid(google_uid)
+
+    if uid do
+      Repo.all(
+        from p in Post,
+          where: p.hidden == false and p.creator_google_uid == ^uid,
+          order_by: [desc: p.inserted_at, desc: p.id],
+          limit: ^limit
+      )
+    else
+      []
+    end
+  end
+
+  def list_created_posts_by_google_uid(_google_uid, _limit), do: []
+
+  def list_liked_posts_by_google_uid(google_uid, limit \\ 100)
+
+  def list_liked_posts_by_google_uid(google_uid, limit)
+      when is_binary(google_uid) and is_integer(limit) and limit > 0 do
+    uid = normalize_google_uid(google_uid)
+
+    if uid do
+      liked_posts_subquery =
+        from h in PostHeart,
+          where: h.google_uid == ^uid and h.kind == "like",
+          group_by: h.post_id,
+          select: %{post_id: h.post_id, latest_liked_at: max(h.inserted_at)}
+
+      Repo.all(
+        from p in Post,
+          join: liked in subquery(liked_posts_subquery),
+          on: liked.post_id == p.id,
+          where: p.hidden == false,
+          order_by: [desc: liked.latest_liked_at, desc: p.inserted_at, desc: p.id],
+          limit: ^limit
+      )
+    else
+      []
+    end
+  end
+
+  def list_liked_posts_by_google_uid(_google_uid, _limit), do: []
+
+  def list_highlighted_posts_by_google_uid(google_uid, limit \\ 100)
+
+  def list_highlighted_posts_by_google_uid(google_uid, limit)
+      when is_binary(google_uid) and is_integer(limit) and limit > 0 do
+    list_highlighted_posts_for_user(google_uid, nil, limit)
+  end
+
+  def list_highlighted_posts_by_google_uid(_google_uid, _limit), do: []
+
+  def list_highlighted_posts_for_user(google_uid, session_id, limit \\ 100)
+
+  def list_highlighted_posts_for_user(google_uid, session_id, limit)
+      when is_integer(limit) and limit > 0 do
+    uid = normalize_google_uid(google_uid)
+    sid = normalize_session_id(session_id)
+
+    owner_dynamic = highlight_owner_dynamic(uid, sid)
+
+    if owner_dynamic do
+      text_highlighted_posts_subquery =
+        from h in Highlight,
+          join: s in PostSnapshot,
+          on: s.id == h.post_snapshot_id,
+          where: ^owner_dynamic,
+          group_by: s.post_id,
+          select: %{post_id: s.post_id, latest_highlighted_at: max(h.inserted_at)}
+
+      overlay_highlighted_posts_subquery =
+        from h in OverlayHighlight,
+          where: ^owner_dynamic,
+          group_by: h.post_id,
+          select: %{post_id: h.post_id, latest_highlighted_at: max(h.inserted_at)}
+
+      highlighted_posts_union_subquery =
+        text_highlighted_posts_subquery
+        |> union_all(^overlay_highlighted_posts_subquery)
+
+      highlighted_posts_subquery =
+        from u in subquery(highlighted_posts_union_subquery),
+          group_by: u.post_id,
+          select: %{post_id: u.post_id, latest_highlighted_at: max(u.latest_highlighted_at)}
+
+      Repo.all(
+        from p in Post,
+          join: highlighted in subquery(highlighted_posts_subquery),
+          on: highlighted.post_id == p.id,
+          where: p.hidden == false,
+          order_by: [desc: highlighted.latest_highlighted_at, desc: p.inserted_at, desc: p.id],
+          limit: ^limit
+      )
+    else
+      []
+    end
+  end
+
   def sync_configured_account_posts(opts \\ []) do
     with {:ok, source_posts} <- source_posts(opts) do
       session_id = opts[:session_id] || "x-sync"
 
       {posts, errors} =
         Enum.reduce(source_posts, {[], []}, fn source_post, {acc_posts, acc_errors} ->
-          case upsert_source_post(source_post, session_id) do
+          case upsert_source_post(source_post, session_id, nil) do
             {:ok, post} -> {[post | acc_posts], acc_errors}
             {:error, reason} -> {acc_posts, [reason | acc_errors]}
           end
@@ -107,6 +210,7 @@ defmodule Matdori.Collab do
     title = attrs["title"] || attrs[:title] || ""
     tweet_url = attrs["tweet_url"] || attrs[:tweet_url] || ""
     snapshot_text = attrs["snapshot_text"] || attrs[:snapshot_text]
+    google_uid = attrs["google_uid"] || attrs[:google_uid]
 
     with {:ok, normalized_title} <- normalize_share_title(title),
          {:ok, normalized_url, tweet_id} <- normalize_share_tweet_url(tweet_url),
@@ -123,7 +227,8 @@ defmodule Matdori.Collab do
                },
                preview_attrs
              ),
-             session_id
+             session_id,
+             google_uid
            ) do
       {:ok, post}
     end
@@ -259,6 +364,7 @@ defmodule Matdori.Collab do
   def replace_overlay_highlights(post_id, attrs)
       when is_integer(post_id) and is_map(attrs) do
     session_id = attrs["session_id"] || attrs[:session_id]
+    google_uid = attrs["google_uid"] || attrs[:google_uid]
     display_name = attrs["display_name"] || attrs[:display_name]
     color = attrs["color"] || attrs[:color]
     highlights = attrs["highlights"] || attrs[:highlights] || []
@@ -276,6 +382,7 @@ defmodule Matdori.Collab do
             post_id: post_id,
             highlight_key: zone.highlight_key,
             session_id: String.slice(session_id, 0, 100),
+            google_uid: normalize_google_uid(google_uid),
             display_name: normalize_overlay_display_name(display_name),
             color: normalize_overlay_color(color),
             left: zone.left,
@@ -321,6 +428,7 @@ defmodule Matdori.Collab do
       payload = %{
         post_snapshot_id: snapshot.id,
         session_id: attrs["session_id"],
+        google_uid: attrs["google_uid"],
         display_name: attrs["display_name"],
         color: attrs["color"],
         quote_exact: attrs["quote_exact"],
@@ -363,13 +471,23 @@ defmodule Matdori.Collab do
     end
   end
 
-  def toggle_reaction(post_id, session_id, kind) when kind in @reaction_kinds do
+  def toggle_reaction(post_id, session_id, kind) when kind in @reaction_kinds,
+    do: toggle_reaction(post_id, session_id, kind, nil)
+
+  def toggle_reaction(_post_id, _session_id, _kind), do: {:error, :invalid_reaction_kind}
+
+  def toggle_reaction(post_id, session_id, kind, google_uid) when kind in @reaction_kinds do
     existing = Repo.get_by(PostHeart, post_id: post_id, session_id: session_id)
 
     case existing do
       nil ->
         %PostHeart{}
-        |> PostHeart.changeset(%{post_id: post_id, session_id: session_id, kind: kind})
+        |> PostHeart.changeset(%{
+          post_id: post_id,
+          session_id: session_id,
+          google_uid: normalize_google_uid(google_uid),
+          kind: kind
+        })
         |> Repo.insert()
 
       %PostHeart{kind: ^kind} = heart ->
@@ -377,12 +495,13 @@ defmodule Matdori.Collab do
 
       heart ->
         heart
-        |> PostHeart.changeset(%{kind: kind})
+        |> PostHeart.changeset(%{kind: kind, google_uid: normalize_google_uid(google_uid)})
         |> Repo.update()
     end
   end
 
-  def toggle_reaction(_post_id, _session_id, _kind), do: {:error, :invalid_reaction_kind}
+  def toggle_reaction(_post_id, _session_id, _kind, _google_uid),
+    do: {:error, :invalid_reaction_kind}
 
   def toggle_heart(post_id, session_id), do: toggle_reaction(post_id, session_id, "like")
 
@@ -462,7 +581,7 @@ defmodule Matdori.Collab do
     end
   end
 
-  defp upsert_source_post(source_post, session_id) do
+  defp upsert_source_post(source_post, session_id, google_uid) do
     with {:ok, source} <- parse_source_post(source_post) do
       post =
         Repo.get_by(Post, tweet_id: source.tweet_id) ||
@@ -494,6 +613,16 @@ defmodule Matdori.Collab do
         tweet_url: source.tweet_url,
         tweet_id: source.tweet_id
       }
+
+      post_attrs =
+        if is_nil(post.creator_google_uid) do
+          case normalize_google_uid(google_uid) do
+            nil -> post_attrs
+            uid -> Map.put(post_attrs, :creator_google_uid, uid)
+          end
+        else
+          post_attrs
+        end
 
       post_attrs =
         if is_binary(source.title) and source.title != "" do
@@ -872,7 +1001,7 @@ defmodule Matdori.Collab do
           [_p, like_counts, _dislike_counts, _view_counts],
           coalesce(like_counts.reaction_count, 0)
         ),
-      desc: dynamic([p], fragment("COALESCE(?, ?)", p.tweet_posted_at, p.inserted_at)),
+      desc: dynamic([p], p.inserted_at),
       desc: dynamic([p], p.id)
     ]
   end
@@ -884,17 +1013,49 @@ defmodule Matdori.Collab do
           [_p, _like_counts, _dislike_counts, view_counts],
           coalesce(view_counts.view_count, 0)
         ),
-      desc: dynamic([p], fragment("COALESCE(?, ?)", p.tweet_posted_at, p.inserted_at)),
+      desc: dynamic([p], p.inserted_at),
       desc: dynamic([p], p.id)
     ]
   end
 
   defp list_sort_order(_sort) do
     [
-      desc: dynamic([p], fragment("COALESCE(?, ?)", p.tweet_posted_at, p.inserted_at)),
+      desc: dynamic([p], p.inserted_at),
       desc: dynamic([p], p.id)
     ]
   end
+
+  defp normalize_google_uid(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      uid -> String.slice(uid, 0, 200)
+    end
+  end
+
+  defp normalize_google_uid(_value), do: nil
+
+  defp normalize_session_id(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      session_id -> String.slice(session_id, 0, 100)
+    end
+  end
+
+  defp normalize_session_id(_value), do: nil
+
+  defp highlight_owner_dynamic(uid, sid) when is_binary(uid) and is_binary(sid) do
+    dynamic([h], h.google_uid == ^uid or (is_nil(h.google_uid) and h.session_id == ^sid))
+  end
+
+  defp highlight_owner_dynamic(uid, _sid) when is_binary(uid) do
+    dynamic([h], h.google_uid == ^uid)
+  end
+
+  defp highlight_owner_dynamic(nil, sid) when is_binary(sid) do
+    dynamic([h], h.session_id == ^sid)
+  end
+
+  defp highlight_owner_dynamic(_uid, _sid), do: nil
 
   defp normalize_share_tweet_url(url) when is_binary(url) do
     trimmed = String.trim(url)

@@ -6,6 +6,7 @@ defmodule Matdori.Collab.Highlight do
 
   schema "highlights" do
     field :session_id, :string
+    field :google_uid, :string
     field :display_name, :string
     field :color, :string
     field :quote_exact, :string
@@ -25,6 +26,7 @@ defmodule Matdori.Collab.Highlight do
     |> cast(attrs, [
       :post_snapshot_id,
       :session_id,
+      :google_uid,
       :display_name,
       :color,
       :quote_exact,

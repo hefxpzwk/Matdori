@@ -5,6 +5,7 @@ defmodule Matdori.Collab.Post do
   alias Matdori.Collab.{PostSnapshot, PostHeart, PostView, Report, OverlayHighlight}
 
   schema "posts" do
+    field :creator_google_uid, :string
     field :title, :string
     field :preview_title, :string
     field :preview_description, :string
@@ -33,6 +34,7 @@ defmodule Matdori.Collab.Post do
     post
     |> cast(attrs, [
       :title,
+      :creator_google_uid,
       :preview_title,
       :preview_description,
       :preview_image_url,

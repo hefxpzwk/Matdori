@@ -42,6 +42,12 @@ function normalizeHexColor(value, fallback = "#3b82f6") {
 
 const SnapshotCanvas = {
   mounted() {
+    this.readonly = this.el.dataset.readonly === "true"
+
+    if (this.readonly) {
+      return
+    }
+
     this.snapshotText = this.el.querySelector("#snapshot-text")
     this.lastPush = 0
     this.lastPointer = { x: 0, y: 0 }

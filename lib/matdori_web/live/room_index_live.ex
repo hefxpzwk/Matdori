@@ -8,10 +8,14 @@ defmodule MatdoriWeb.RoomIndexLive do
   @sort_options ~w(latest likes views)
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
+    authenticated = logged_in?(session)
+
     {:ok,
      socket
      |> assign(:posts, [])
+     |> assign(:display_name, session["display_name"])
+     |> assign(:authenticated, authenticated)
      |> assign(:embed_filter, "all")
      |> assign(:sort, "latest")}
   end
@@ -35,20 +39,33 @@ defmodule MatdoriWeb.RoomIndexLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={%{display_name: @display_name, authenticated: @authenticated}}
+    >
       <section
         id="room-list"
         class="space-y-3 rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm"
       >
         <div class="flex items-center justify-between">
           <h1 class="text-xl font-semibold text-zinc-900">만들어진 방 목록</h1>
-          <.link
-            id="go-share-page"
-            navigate={~p"/"}
-            class="rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
-          >
-            새 방 만들기
-          </.link>
+          <%= if @authenticated do %>
+            <.link
+              id="go-share-page"
+              navigate={~p"/"}
+              class="rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+            >
+              새 방 만들기
+            </.link>
+          <% else %>
+            <.link
+              id="go-login-page"
+              navigate={~p"/login"}
+              class="rounded-lg border border-zinc-300 px-3 py-1 text-sm text-zinc-700 hover:bg-zinc-50"
+            >
+              로그인
+            </.link>
+          <% end %>
         </div>
 
         <div
@@ -187,4 +204,13 @@ defmodule MatdoriWeb.RoomIndexLive do
   end
 
   defp embed_status_label(post), do: post.tweet_url |> Embed.classify() |> Embed.status_label()
+
+  defp logged_in?(session) when is_map(session) do
+    case session["google_uid"] do
+      uid when is_binary(uid) and uid != "" -> true
+      _ -> false
+    end
+  end
+
+  defp logged_in?(_session), do: false
 end

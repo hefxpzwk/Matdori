@@ -35,4 +35,21 @@ defmodule MatdoriWeb.ConnCase do
     Matdori.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  def google_auth_conn(conn, overrides \\ %{}) do
+    seed = System.unique_integer([:positive])
+
+    session =
+      %{
+        "google_uid" => "google-#{seed}",
+        "google_email" => "user#{seed}@example.com",
+        "google_name" => "Google User #{seed}",
+        "session_id" => "session-#{seed}",
+        "display_name" => "Google User #{seed}",
+        "color" => "#3b82f6"
+      }
+      |> Map.merge(overrides)
+
+    Phoenix.ConnTest.init_test_session(conn, session)
+  end
 end

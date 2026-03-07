@@ -6,6 +6,7 @@ defmodule MatdoriWeb.ShareLiveTest do
   alias Matdori.Collab
 
   test "users can create room with title and link", %{conn: conn} do
+    conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/")
     id = Integer.to_string(System.unique_integer([:positive]))
 
@@ -27,6 +28,7 @@ defmodule MatdoriWeb.ShareLiveTest do
   end
 
   test "users can create room from generic web link", %{conn: conn} do
+    conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/")
 
     assert {:error, {:live_redirect, %{to: to}}} =
@@ -47,6 +49,7 @@ defmodule MatdoriWeb.ShareLiveTest do
   end
 
   test "title is required when creating room", %{conn: conn} do
+    conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/")
     id = Integer.to_string(System.unique_integer([:positive]))
 
@@ -64,6 +67,7 @@ defmodule MatdoriWeb.ShareLiveTest do
   end
 
   test "invalid url shows validation feedback", %{conn: conn} do
+    conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/")
 
     _html =
@@ -77,5 +81,13 @@ defmodule MatdoriWeb.ShareLiveTest do
       |> render_submit()
 
     assert render(view) =~ "유효한 링크를 입력해 주세요"
+  end
+
+  test "unauthenticated users can only read and see login CTA", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#share-login-required")
+    assert has_element?(view, "#share-login-link")
+    refute has_element?(view, "#share-room-form")
   end
 end

@@ -12,8 +12,22 @@ defmodule MatdoriWeb.Router do
     plug MatdoriWeb.Plugs.ContentSecurityPolicy
   end
 
+  pipeline :require_google_auth do
+    plug MatdoriWeb.Plugs.RequireGoogleAuth
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
+  end
+
+  scope "/", MatdoriWeb do
+    pipe_through :browser
+
+    get "/login", AuthController, :login
+    get "/auth/:provider", AuthController, :request
+    get "/auth/:provider/callback", AuthController, :callback
+    post "/auth/:provider/callback", AuthController, :callback
+    get "/auth/logout", AuthController, :logout
   end
 
   scope "/", MatdoriWeb do
@@ -22,6 +36,12 @@ defmodule MatdoriWeb.Router do
     live "/", ShareLive, :index
     live "/rooms", RoomIndexLive, :index
     live "/rooms/:post_id", RoomLive, :show
+  end
+
+  scope "/", MatdoriWeb do
+    pipe_through [:browser, :require_google_auth]
+
+    live "/me", MyPageLive, :index
   end
 
   # Other scopes may use custom stacks.

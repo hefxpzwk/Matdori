@@ -7,6 +7,7 @@ defmodule Matdori.Collab.OverlayHighlight do
   schema "overlay_highlights" do
     field :highlight_key, :string
     field :session_id, :string
+    field :google_uid, :string
     field :display_name, :string
     field :color, :string
     field :left, :float
@@ -26,6 +27,7 @@ defmodule Matdori.Collab.OverlayHighlight do
       :post_id,
       :highlight_key,
       :session_id,
+      :google_uid,
       :display_name,
       :color,
       :left,

@@ -35,3 +35,12 @@ matdori-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# Environment and sensitive files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+credentials.json
+secrets.yml

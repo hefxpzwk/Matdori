@@ -34,6 +34,11 @@ defmodule MatdoriWeb.Layouts do
   slot :inner_block, required: true
 
   def app(assigns) do
+    assigns =
+      assigns
+      |> assign(:authenticated, scope_authenticated(assigns[:current_scope]))
+      |> assign(:display_name, scope_display_name(assigns[:current_scope]))
+
     ~H"""
     <header class="border-b border-zinc-200/80 bg-white/80 backdrop-blur">
       <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
@@ -48,6 +53,24 @@ defmodule MatdoriWeb.Layouts do
           <a href={~p"/rooms"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
             방 목록
           </a>
+          <%= if @authenticated and @display_name do %>
+            <a href={~p"/me"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
+              마이페이지
+            </a>
+            <span
+              id="header-display-name"
+              class="rounded-full border border-zinc-200 bg-zinc-100 px-2 py-1 text-xs font-semibold text-zinc-700"
+            >
+              {@display_name}
+            </span>
+            <a href={~p"/auth/logout"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
+              로그아웃
+            </a>
+          <% else %>
+            <a href={~p"/login"} class="rounded-md px-2 py-1 text-zinc-700 hover:bg-zinc-100">
+              로그인
+            </a>
+          <% end %>
         </nav>
       </div>
     </header>
@@ -111,4 +134,18 @@ defmodule MatdoriWeb.Layouts do
     <div></div>
     """
   end
+
+  defp scope_display_name(%{display_name: name}) when is_binary(name) and name != "" do
+    name
+  end
+
+  defp scope_display_name(%{"display_name" => name}) when is_binary(name) and name != "" do
+    name
+  end
+
+  defp scope_display_name(_), do: nil
+
+  defp scope_authenticated(%{authenticated: true}), do: true
+  defp scope_authenticated(%{"authenticated" => true}), do: true
+  defp scope_authenticated(_), do: false
 end

@@ -17,12 +17,15 @@ defmodule MatdoriWeb.RoomLive do
     session_id = session["session_id"]
     display_name = session["display_name"]
     color = unique_cursor_color(session_id, session["color"])
+    authenticated = logged_in?(session)
 
     socket =
       socket
       |> assign(:session_id, session_id)
+      |> assign(:google_uid, session["google_uid"])
       |> assign(:display_name, display_name)
       |> assign(:color, color)
+      |> assign(:authenticated, authenticated)
       |> assign(:post, nil)
       |> assign(:snapshot, nil)
       |> assign(:snapshot_versions, [])
@@ -65,7 +68,9 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("cursor_move", %{"x" => x, "y" => y}, socket) do
-    if RateLimiter.allow?(socket.assigns.session_id, :cursor_move, @cursor_limit, :second) == :ok and
+    if socket.assigns.authenticated and
+         RateLimiter.allow?(socket.assigns.session_id, :cursor_move, @cursor_limit, :second) ==
+           :ok and
          socket.assigns.post do
       upsert_presence_meta(socket, fn meta ->
         next_meta = Map.put(meta, :cursor, normalize_cursor_position(x, y, meta_cursor(meta)))
@@ -85,8 +90,9 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("cursor_note", %{"mode" => mode, "text" => text} = params, socket) do
-    if RateLimiter.allow?(socket.assigns.session_id, :cursor_note, @cursor_note_limit, :second) ==
-         :ok and
+    if socket.assigns.authenticated and
+         RateLimiter.allow?(socket.assigns.session_id, :cursor_note, @cursor_note_limit, :second) ==
+           :ok and
          socket.assigns.post do
       upsert_presence_meta(socket, fn meta ->
         cursor =
@@ -107,14 +113,16 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("overlay_highlights_sync", %{"highlights" => highlights}, socket) do
-    if RateLimiter.allow?(
-         socket.assigns.session_id,
-         :overlay_highlights_sync,
-         @action_limit,
-         :second
-       ) == :ok and socket.assigns.post do
+    if socket.assigns.authenticated and
+         RateLimiter.allow?(
+           socket.assigns.session_id,
+           :overlay_highlights_sync,
+           @action_limit,
+           :second
+         ) == :ok and socket.assigns.post do
       case Collab.replace_overlay_highlights(socket.assigns.post.id, %{
              session_id: socket.assigns.session_id,
+             google_uid: socket.assigns.google_uid,
              display_name: socket.assigns.display_name,
              color: socket.assigns.color,
              highlights: highlights
@@ -142,12 +150,13 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("overlay_highlight_draft", %{"zone" => zone}, socket) do
-    if RateLimiter.allow?(
-         socket.assigns.session_id,
-         :overlay_highlight_draft,
-         @overlay_draft_limit,
-         :second
-       ) == :ok and socket.assigns.post do
+    if socket.assigns.authenticated and
+         RateLimiter.allow?(
+           socket.assigns.session_id,
+           :overlay_highlight_draft,
+           @overlay_draft_limit,
+           :second
+         ) == :ok and socket.assigns.post do
       upsert_presence_meta(socket, fn meta ->
         Map.put(meta, :overlay_highlight_draft, normalize_overlay_highlight_zone(zone))
       end)
@@ -166,13 +175,15 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("create_highlight", params, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :create_highlight, @action_limit),
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :create_highlight, @action_limit),
          %{id: _} = snapshot <- socket.assigns.snapshot,
          {:ok, _highlight} <-
            Collab.create_highlight(
              snapshot,
              Map.merge(params, %{
                "session_id" => socket.assigns.session_id,
+               "google_uid" => socket.assigns.google_uid,
                "display_name" => socket.assigns.display_name,
                "color" => socket.assigns.color
              })
@@ -180,6 +191,9 @@ defmodule MatdoriWeb.RoomLive do
       broadcast_refresh(socket)
       {:noreply, reload_current_room(socket)}
     else
+      false ->
+        login_required_reply(socket)
+
       {:error, :overlap} ->
         {:noreply, put_flash(socket, :error, "이미 존재하는 하이라이트와 선택 영역이 겹칩니다.")}
 
@@ -198,7 +212,8 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("comment_submit", %{"comment" => %{"body" => body}}, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :comment_submit, @action_limit),
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :comment_submit, @action_limit),
          selected when is_integer(selected) <- socket.assigns.selected_highlight_id,
          {:ok, _comment} <-
            Collab.create_comment(selected, %{
@@ -209,6 +224,9 @@ defmodule MatdoriWeb.RoomLive do
       broadcast_refresh(socket)
       {:noreply, reload_current_room(socket)}
     else
+      false ->
+        login_required_reply(socket)
+
       {:error, :rate_limited} ->
         {:noreply, put_flash(socket, :error, "댓글 요청이 너무 많습니다. 잠시만 기다려 주세요.")}
 
@@ -221,12 +239,16 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("delete_comment", %{"id" => id}, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :delete_comment, @action_limit),
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :delete_comment, @action_limit),
          {parsed, ""} <- Integer.parse(id),
          {:ok, _} <- Collab.soft_delete_comment(parsed, socket.assigns.session_id) do
       broadcast_refresh(socket)
       {:noreply, reload_current_room(socket)}
     else
+      false ->
+        login_required_reply(socket)
+
       {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "본인이 최근에 작성한 댓글만 삭제할 수 있습니다.")}
 
@@ -239,9 +261,16 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("toggle_reaction", %{"kind" => kind}, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :toggle_reaction, @action_limit),
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :toggle_reaction, @action_limit),
          %{id: post_id} <- socket.assigns.post,
-         {:ok, _} <- Collab.toggle_reaction(post_id, socket.assigns.session_id, kind) do
+         {:ok, _} <-
+           Collab.toggle_reaction(
+             post_id,
+             socket.assigns.session_id,
+             kind,
+             socket.assigns.google_uid
+           ) do
       metrics = room_metrics(post_id)
 
       broadcast_room_metrics(post_id, metrics)
@@ -254,6 +283,9 @@ defmodule MatdoriWeb.RoomLive do
        |> assign(:liked, Collab.reacted_by?(post_id, socket.assigns.session_id, "like"))
        |> assign(:disliked, Collab.reacted_by?(post_id, socket.assigns.session_id, "dislike"))}
     else
+      false ->
+        login_required_reply(socket)
+
       {:error, :rate_limited} ->
         {:noreply, put_flash(socket, :error, "너무 빠르게 클릭하고 있습니다.")}
 
@@ -270,7 +302,8 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("submit_report", %{"report" => %{"reason" => reason}}, socket) do
-    with :ok <- RateLimiter.allow?(socket.assigns.session_id, :report, 5),
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :report, 5),
          %{id: post_id} <- socket.assigns.post,
          {:ok, _} <-
            Collab.create_report(post_id, %{
@@ -280,6 +313,9 @@ defmodule MatdoriWeb.RoomLive do
            }) do
       {:noreply, put_flash(socket, :info, "신고가 접수되었습니다. 감사합니다.")}
     else
+      false ->
+        login_required_reply(socket)
+
       {:error, :rate_limited} ->
         {:noreply, put_flash(socket, :error, "현재 신고 한도에 도달했습니다.")}
 
@@ -289,26 +325,30 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("update_name", %{"profile" => %{"display_name" => name}}, socket) do
-    cleaned =
-      name
-      |> String.trim()
-      |> String.replace(~r/[^\p{L}\p{N}\s_-]/u, "")
-      |> String.slice(0, 30)
+    if socket.assigns.authenticated do
+      cleaned =
+        name
+        |> String.trim()
+        |> String.replace(~r/[^\p{L}\p{N}\s_-]/u, "")
+        |> String.slice(0, 30)
 
-    if cleaned == "" do
-      {:noreply, put_flash(socket, :error, "표시 이름은 비워둘 수 없습니다.")}
-    else
-      if socket.assigns.post do
-        upsert_presence_meta(
-          assign(socket, :display_name, cleaned),
-          &Map.put(&1, :display_name, cleaned)
-        )
+      if cleaned == "" do
+        {:noreply, put_flash(socket, :error, "표시 이름은 비워둘 수 없습니다.")}
+      else
+        if socket.assigns.post do
+          upsert_presence_meta(
+            assign(socket, :display_name, cleaned),
+            &Map.put(&1, :display_name, cleaned)
+          )
+        end
+
+        {:noreply,
+         socket
+         |> assign(:display_name, cleaned)
+         |> put_flash(:info, "이 세션의 표시 이름이 변경되었습니다.")}
       end
-
-      {:noreply,
-       socket
-       |> assign(:display_name, cleaned)
-       |> put_flash(:info, "이 세션의 표시 이름이 변경되었습니다.")}
+    else
+      login_required_reply(socket)
     end
   end
 
@@ -365,7 +405,10 @@ defmodule MatdoriWeb.RoomLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={%{}}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={%{display_name: @display_name, authenticated: @authenticated}}
+    >
       <section class="space-y-4" id="room-detail">
         <.link
           id="back-to-room-list"
@@ -380,6 +423,7 @@ defmodule MatdoriWeb.RoomLive do
             id="room-collab-stage"
             phx-hook="SnapshotCanvas"
             data-cursor-color={@color}
+            data-readonly={!@authenticated}
             class="relative rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm"
           >
             <div class="mb-3 flex items-center justify-between">
@@ -438,12 +482,14 @@ defmodule MatdoriWeb.RoomLive do
                 type="button"
                 phx-click="toggle_reaction"
                 phx-value-kind="like"
+                disabled={!@authenticated}
                 class={[
                   "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
                   if(@liked,
                     do: "border-emerald-300 bg-emerald-50 text-emerald-700",
                     else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
-                  )
+                  ),
+                  !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
               >
                 <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> 좋아요
@@ -455,12 +501,14 @@ defmodule MatdoriWeb.RoomLive do
                 type="button"
                 phx-click="toggle_reaction"
                 phx-value-kind="dislike"
+                disabled={!@authenticated}
                 class={[
                   "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-medium transition",
                   if(@disliked,
                     do: "border-rose-300 bg-rose-50 text-rose-700",
                     else: "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
-                  )
+                  ),
+                  !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
               >
                 <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> 싫어요
@@ -473,6 +521,11 @@ defmodule MatdoriWeb.RoomLive do
               >
                 조회수 {@view_count}
               </span>
+            </div>
+
+            <div :if={!@authenticated} id="room-login-required" class="mb-3 text-sm text-zinc-600">
+              비로그인 사용자는 조회만 가능합니다. <.link navigate={~p"/login"} class="underline">로그인</.link>
+              후 반응/하이라이트/댓글을 사용할 수 있어요.
             </div>
 
             <%= if @post.hidden do %>
@@ -488,6 +541,7 @@ defmodule MatdoriWeb.RoomLive do
                   id="embed-highlight-mode-toggle"
                   type="button"
                   data-highlight-overlay-toggle
+                  disabled={!@authenticated}
                   class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
                 >
                   <.icon name="hero-pencil-square" class="h-4 w-4" /> 하이라이트 선택 모드
@@ -496,6 +550,7 @@ defmodule MatdoriWeb.RoomLive do
                   id="embed-highlight-clear"
                   type="button"
                   data-highlight-overlay-clear
+                  disabled={!@authenticated}
                   class="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
                 >
                   <.icon name="hero-trash" class="h-4 w-4" /> 선택 초기화
@@ -644,6 +699,7 @@ defmodule MatdoriWeb.RoomLive do
                       id="room-embed-highlight-overlay"
                       phx-hook="EmbedHighlightOverlay"
                       phx-update="ignore"
+                      data-readonly={!@authenticated}
                       data-stage-selector="#room-embed-content"
                       data-toggle-selector="#embed-highlight-mode-toggle"
                       data-clear-selector="#embed-highlight-clear"
@@ -1060,6 +1116,22 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   defp normalize_cursor_coordinate(_value, default), do: default
+
+  defp login_required_reply(socket) do
+    {:noreply,
+     socket
+     |> put_flash(:error, "로그인한 사용자만 수정할 수 있습니다.")
+     |> push_navigate(to: ~p"/login")}
+  end
+
+  defp logged_in?(session) when is_map(session) do
+    case session["google_uid"] do
+      uid when is_binary(uid) and uid != "" -> true
+      _ -> false
+    end
+  end
+
+  defp logged_in?(_session), do: false
 
   defp normalize_cursor_note_text(value) when is_binary(value) do
     value

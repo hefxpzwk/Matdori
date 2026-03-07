@@ -210,6 +210,12 @@ function buildStateKey(highlightsBySession, draftsBySession, selectedHighlight) 
 
 const EmbedHighlightOverlay = {
   mounted() {
+    this.readonly = this.el.dataset.readonly === "true"
+
+    if (this.readonly) {
+      return
+    }
+
     this.stage = this.el.closest(this.el.dataset.stageSelector || "#room-embed-stage")
     this.stageViewport = this.stage ? this.stage.closest("#room-embed-stage") : null
     this.cursorStage = this.el.closest("#room-collab-stage") || this.stage

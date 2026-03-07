@@ -6,7 +6,33 @@ defmodule MatdoriWeb.RoomLiveTest do
   alias Matdori.Collab
   alias MatdoriWeb.Presence
 
+  test "unauthenticated users can view room but cannot react", %{conn: conn} do
+    id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "조회 전용 방",
+                 "tweet_url" => "https://x.com/read_only_user/status/#{id}"
+               },
+               "room-live-readonly"
+             )
+
+    {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
+
+    assert has_element?(view, "#room-title")
+    assert has_element?(view, "#room-login-required")
+    assert has_element?(view, "#like-button[disabled]")
+    assert has_element?(view, "#dislike-button[disabled]")
+
+    assert {:error, {:live_redirect, %{to: to}}} =
+             render_click(view, "toggle_reaction", %{"kind" => "like"})
+
+    assert to == ~p"/login"
+  end
+
   test "x room shows native embed status", %{conn: conn} do
+    conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))
 
     assert {:ok, post} =
@@ -41,6 +67,8 @@ defmodule MatdoriWeb.RoomLiveTest do
   end
 
   test "youtube room auto-embeds video iframe", %{conn: conn} do
+    conn = google_auth_conn(conn)
+
     assert {:ok, post} =
              Collab.share_post(
                %{
@@ -63,6 +91,8 @@ defmodule MatdoriWeb.RoomLiveTest do
   end
 
   test "generic link room shows preview status", %{conn: conn} do
+    conn = google_auth_conn(conn)
+
     assert {:ok, post} =
              Collab.share_post(
                %{"title" => "블로그 방", "tweet_url" => "https://example.com/posts/hello-world"},
@@ -86,6 +116,7 @@ defmodule MatdoriWeb.RoomLiveTest do
   end
 
   test "preview card renders og image when metadata exists", %{conn: conn} do
+    conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))
 
     assert {:ok, %{inserted_or_updated: 1}} =
@@ -112,6 +143,8 @@ defmodule MatdoriWeb.RoomLiveTest do
   end
 
   test "non-embed room does not show other non-embed rooms", %{conn: conn} do
+    conn = google_auth_conn(conn)
+
     assert {:ok, first} =
              Collab.share_post(
                %{"title" => "첫번째 링크", "tweet_url" => "https://example.com/posts/first"},
@@ -140,8 +173,8 @@ defmodule MatdoriWeb.RoomLiveTest do
                "room-live-reaction-owner"
              )
 
-    conn_a = init_test_session(conn, %{"session_id" => "session-a"})
-    conn_b = init_test_session(conn, %{"session_id" => "session-b"})
+    conn_a = google_auth_conn(conn, %{"session_id" => "session-a"})
+    conn_b = google_auth_conn(conn, %{"session_id" => "session-b"})
 
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
@@ -194,8 +227,8 @@ defmodule MatdoriWeb.RoomLiveTest do
                "room-live-overlay-sync"
              )
 
-    conn_a = init_test_session(conn, %{"session_id" => "overlay-session-a"})
-    conn_b = init_test_session(conn, %{"session_id" => "overlay-session-b"})
+    conn_a = google_auth_conn(conn, %{"session_id" => "overlay-session-a"})
+    conn_b = google_auth_conn(conn, %{"session_id" => "overlay-session-b"})
 
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, _view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
@@ -260,8 +293,8 @@ defmodule MatdoriWeb.RoomLiveTest do
                "room-live-overlay-persist"
              )
 
-    conn_a = init_test_session(conn, %{"session_id" => "overlay-persist-a"})
-    conn_b = init_test_session(conn, %{"session_id" => "overlay-persist-b"})
+    conn_a = google_auth_conn(conn, %{"session_id" => "overlay-persist-a"})
+    conn_b = google_auth_conn(conn, %{"session_id" => "overlay-persist-b"})
 
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")

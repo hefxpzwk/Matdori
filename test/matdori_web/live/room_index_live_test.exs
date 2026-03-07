@@ -4,8 +4,18 @@ defmodule MatdoriWeb.RoomIndexLiveTest do
   import Phoenix.LiveViewTest
 
   alias Matdori.Collab
+  alias Matdori.Collab.Post
+  alias Matdori.Repo
+
+  test "unauthenticated users can access room index", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/rooms")
+
+    assert has_element?(view, "#room-list")
+    assert has_element?(view, "#go-login-page")
+  end
 
   test "room index shows created rooms", %{conn: conn} do
+    conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))
 
     assert {:ok, post} =
@@ -33,6 +43,7 @@ defmodule MatdoriWeb.RoomIndexLiveTest do
   end
 
   test "room index filters embedded and preview rooms", %{conn: conn} do
+    conn = google_auth_conn(conn)
     x_id = Integer.to_string(System.unique_integer([:positive]))
 
     assert {:ok, x_post} =
@@ -64,6 +75,7 @@ defmodule MatdoriWeb.RoomIndexLiveTest do
   end
 
   test "room index sorts by likes and views", %{conn: conn} do
+    conn = google_auth_conn(conn)
     first_id = Integer.to_string(System.unique_integer([:positive]))
     second_id = Integer.to_string(System.unique_integer([:positive]))
 
@@ -103,6 +115,86 @@ defmodule MatdoriWeb.RoomIndexLiveTest do
 
     assert html_position(views_html, ~s(id="room-item-#{second.id}")) <
              html_position(views_html, ~s(id="room-item-#{first.id}"))
+  end
+
+  test "room index latest sort uses room recency not tweet posted time", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    older_id = Integer.to_string(System.unique_integer([:positive]))
+    newer_id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, older} =
+             Collab.share_post(
+               %{
+                 "title" => "먼저 만든 방",
+                 "tweet_url" => "https://x.com/latest_user/status/#{older_id}"
+               },
+               "room-index-latest-1"
+             )
+
+    assert {:ok, newer} =
+             Collab.share_post(
+               %{
+                 "title" => "나중에 만든 방",
+                 "tweet_url" => "https://x.com/latest_user/status/#{newer_id}"
+               },
+               "room-index-latest-2"
+             )
+
+    old_tweet_time =
+      DateTime.utc_now() |> DateTime.add(-3650, :day) |> DateTime.truncate(:microsecond)
+
+    assert %Post{} =
+             newer |> Ecto.Changeset.change(tweet_posted_at: old_tweet_time) |> Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/rooms")
+    latest_html = render(view)
+
+    assert html_position(latest_html, ~s(id="room-item-#{newer.id}")) <
+             html_position(latest_html, ~s(id="room-item-#{older.id}"))
+  end
+
+  test "likes and views sort fall back to latest on ties", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    older_id = Integer.to_string(System.unique_integer([:positive]))
+    newer_id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, older} =
+             Collab.share_post(
+               %{
+                 "title" => "tie-older",
+                 "tweet_url" => "https://x.com/tie_user/status/#{older_id}"
+               },
+               "room-index-tie-1"
+             )
+
+    assert {:ok, newer} =
+             Collab.share_post(
+               %{
+                 "title" => "tie-newer",
+                 "tweet_url" => "https://x.com/tie_user/status/#{newer_id}"
+               },
+               "room-index-tie-2"
+             )
+
+    assert {:ok, _} = Collab.toggle_reaction(older.id, "room-index-tie-like-older", "like")
+    assert {:ok, _} = Collab.toggle_reaction(newer.id, "room-index-tie-like-newer", "like")
+
+    assert :ok = Collab.register_view(older.id, "room-index-tie-view-older")
+    assert :ok = Collab.register_view(newer.id, "room-index-tie-view-newer")
+
+    {:ok, view, _html} = live(conn, ~p"/rooms")
+
+    view |> element("#room-sort-likes") |> render_click()
+    likes_html = render(view)
+
+    assert html_position(likes_html, ~s(id="room-item-#{newer.id}")) <
+             html_position(likes_html, ~s(id="room-item-#{older.id}"))
+
+    view |> element("#room-sort-views") |> render_click()
+    views_html = render(view)
+
+    assert html_position(views_html, ~s(id="room-item-#{newer.id}")) <
+             html_position(views_html, ~s(id="room-item-#{older.id}"))
   end
 
   defp html_position(html, needle) do

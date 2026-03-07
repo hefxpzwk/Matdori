@@ -1,5 +1,34 @@
 import Config
 
+if config_env() in [:dev, :test] do
+  [".env", ".enbv"]
+  |> Enum.map(&Path.expand("../#{&1}", __DIR__))
+  |> Enum.each(fn path ->
+    if File.exists?(path) do
+      path
+      |> File.read!()
+      |> String.split("\n")
+      |> Enum.each(fn line ->
+        trimmed = String.trim(line)
+
+        if trimmed != "" and !String.starts_with?(trimmed, "#") do
+          case String.split(trimmed, "=", parts: 2) do
+            [key, value] ->
+              env_key = String.trim(key)
+
+              if env_key != "" and is_nil(System.get_env(env_key)) do
+                System.put_env(env_key, String.trim(value))
+              end
+
+            _ ->
+              :ok
+          end
+        end
+      end)
+    end
+  end)
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -48,6 +77,10 @@ config :matdori,
     System.get_env("X_SOURCE_USERNAME") || Application.get_env(:matdori, :x_source_username),
   x_periodic_sync_interval_ms: x_periodic_sync_interval_ms,
   x_periodic_sync_enabled: x_periodic_sync_enabled
+
+config :ueberauth, Ueberauth.Strategy.Google.OAuth,
+  client_id: System.get_env("GOOGLE_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_CLIENT_SECRET")
 
 if config_env() == :prod do
   database_url =
