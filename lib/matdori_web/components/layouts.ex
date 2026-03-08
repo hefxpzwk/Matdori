@@ -80,7 +80,11 @@ defmodule MatdoriWeb.Layouts do
                 </nav>
 
                 <div class="x-top-actions">
-                  <.link id="header-create-room" navigate={~p"/"} class="x-top-create-btn">
+                  <.link
+                    id="header-create-room"
+                    navigate={~p"/?#{%{create: "1"}}"}
+                    class="x-top-create-btn"
+                  >
                     <.icon name="hero-plus" class="size-4" /> Create Room
                   </.link>
 

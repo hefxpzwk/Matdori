@@ -95,6 +95,16 @@ defmodule MatdoriWeb.ShareLiveTest do
              html_position(live_html, ~s(id="share-feed-item-#{second.id}"))
   end
 
+  test "create query param opens centered create modal", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    {:ok, view, _html} = live(conn, ~p"/?create=1")
+
+    assert has_element?(view, "#share-create-modal-backdrop")
+    assert has_element?(view, "#share-create-form")
+    assert has_element?(view, "#share-create-link-url")
+    assert has_element?(view, "#share-title")
+  end
+
   test "users can navigate to existing room by searching link", %{conn: conn} do
     id = Integer.to_string(System.unique_integer([:positive]))
     url = "https://x.com/community_user/status/#{id}"
@@ -147,6 +157,7 @@ defmodule MatdoriWeb.ShareLiveTest do
       |> render_submit()
 
     assert has_element?(view, "#share-room-start-create")
+    refute has_element?(view, "#share-room-search")
     refute has_element?(view, "#share-title")
 
     _html =
@@ -160,7 +171,7 @@ defmodule MatdoriWeb.ShareLiveTest do
 
     assert {:error, {:live_redirect, %{to: to}}} =
              view
-             |> form("#share-room-form",
+             |> form("#share-create-form",
                share: %{
                  title: "같이 읽고 싶은 글",
                  tweet_url: url
@@ -196,7 +207,7 @@ defmodule MatdoriWeb.ShareLiveTest do
 
     assert {:error, {:live_redirect, %{to: to}}} =
              view
-             |> form("#share-room-form",
+             |> form("#share-create-form",
                share: %{
                  title: "블로그 공유",
                  tweet_url: url
@@ -233,7 +244,7 @@ defmodule MatdoriWeb.ShareLiveTest do
 
     _html =
       view
-      |> form("#share-room-form",
+      |> form("#share-create-form",
         share: %{
           title: "",
           tweet_url: url
@@ -258,6 +269,48 @@ defmodule MatdoriWeb.ShareLiveTest do
       |> render_submit()
 
     assert render(view) =~ "Please enter a valid link."
+  end
+
+  test "creating with existing url shows info and navigates to that room", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    existing_id = Integer.to_string(System.unique_integer([:positive]))
+    existing_url = "https://x.com/community_user/status/#{existing_id}"
+
+    {:ok, post} =
+      Collab.share_post(%{"title" => "existing-room", "tweet_url" => existing_url}, "seed-dup")
+
+    new_id = Integer.to_string(System.unique_integer([:positive]))
+    new_url = "https://x.com/community_user/status/#{new_id}"
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    _html =
+      view
+      |> form("#share-room-form",
+        share: %{
+          tweet_url: new_url
+        }
+      )
+      |> render_submit()
+
+    assert has_element?(view, "#share-room-start-create")
+
+    _html =
+      view
+      |> element("#share-room-start-create")
+      |> render_click()
+
+    assert {:error, {:live_redirect, %{to: to}}} =
+             view
+             |> form("#share-create-form",
+               share: %{
+                 title: "new title",
+                 tweet_url: existing_url
+               }
+             )
+             |> render_submit()
+
+    assert to == ~p"/rooms/#{post.id}"
   end
 
   test "unauthenticated users can only read and see login CTA", %{conn: conn} do

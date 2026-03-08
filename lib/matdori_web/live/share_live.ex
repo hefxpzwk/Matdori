@@ -9,6 +9,7 @@ defmodule MatdoriWeb.ShareLive do
   @action_limit 20
   @feed_limit 60
   @feed_refresh_ms 6_000
+  @embed_filters ~w(all embedded preview)
 
   @impl true
   def mount(_params, session, socket) do
@@ -26,6 +27,7 @@ defmodule MatdoriWeb.ShareLive do
      |> assign(:composer_mode, :search)
      |> assign(:search_status, :idle)
      |> assign(:feed_sort, "latest")
+     |> assign(:feed_embed_filter, "all")
      |> assign(:feed_posts, [])
      |> assign(:active_counts, %{})
      |> assign(:feed_loaded?, false)
@@ -36,9 +38,16 @@ defmodule MatdoriWeb.ShareLive do
   def handle_params(params, _uri, socket) do
     sort = params |> Map.get("sort", socket.assigns.feed_sort) |> normalize_feed_sort()
 
+    embed_filter =
+      params
+      |> Map.get("embed", socket.assigns.feed_embed_filter)
+      |> normalize_feed_embed_filter()
+
     socket =
       socket
-      |> assign_feed(sort)
+      |> assign_feed(sort, embed_filter)
+      |> assign(:composer_mode, if(open_create_param?(params), do: :create, else: :search))
+      |> assign(:search_status, :idle)
       |> maybe_schedule_feed_refresh()
 
     {:noreply, socket}
@@ -108,60 +117,100 @@ defmodule MatdoriWeb.ShareLive do
   end
 
   @impl true
+  def handle_event("cancel_create", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:composer_mode, :search)
+     |> assign(:search_status, :not_found)}
+  end
+
+  @impl true
   def handle_event("share_room", %{"share" => share_params}, socket) do
-    with true <- socket.assigns.authenticated,
-         :ok <- RateLimiter.allow?(socket.assigns.session_id, :share_room, @action_limit),
-         {:ok, post} <-
-           Collab.share_post(
-             Map.put(share_params, "google_uid", socket.assigns.google_uid),
-             socket.assigns.session_id
-           ) do
-      {:noreply,
-       socket
-       |> assign(:share_form, empty_share_form())
-       |> put_flash(:info, "A new room has been created.")
-       |> push_navigate(to: ~p"/rooms/#{post.id}")}
-    else
-      false ->
+    params = normalized_share_params(share_params)
+    tweet_url = String.trim(params["tweet_url"])
+
+    case Collab.find_post_by_url(tweet_url) do
+      {:ok, post} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Only signed-in users can create rooms.")
-         |> push_navigate(to: ~p"/login")}
+         |> assign(:composer_mode, :search)
+         |> assign(:search_status, :found)
+         |> put_flash(:info, "같은 주소의 방이 있습니다.")
+         |> push_navigate(to: ~p"/rooms/#{post.id}")}
 
-      {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "Too many requests. Please try again shortly.")}
+      :not_found ->
+        with true <- socket.assigns.authenticated,
+             :ok <- RateLimiter.allow?(socket.assigns.session_id, :share_room, @action_limit),
+             {:ok, post} <-
+               Collab.share_post(
+                 Map.put(params, "google_uid", socket.assigns.google_uid),
+                 socket.assigns.session_id
+               ) do
+          {:noreply,
+           socket
+           |> assign(:share_form, empty_share_form())
+           |> assign(:composer_mode, :search)
+           |> assign(:search_status, :idle)
+           |> put_flash(:info, "A new room has been created.")
+           |> push_navigate(to: ~p"/rooms/#{post.id}")}
+        else
+          false ->
+            {:noreply,
+             socket
+             |> put_flash(:error, "Only signed-in users can create rooms.")
+             |> push_navigate(to: ~p"/login")}
 
-      {:error, :invalid_title} ->
-        {:noreply,
-         socket
-         |> assign(:share_form, share_form(share_params))
-         |> put_flash(:error, "Please enter a title.")}
+          {:error, :rate_limited} ->
+            {:noreply, put_flash(socket, :error, "Too many requests. Please try again shortly.")}
+
+          {:error, :invalid_title} ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :create)
+             |> put_flash(:error, "Please enter a title.")}
+
+          {:error, :invalid_tweet_url} ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :create)
+             |> put_flash(:error, "Please enter a valid link.")}
+
+          {:error, _} ->
+            {:noreply,
+             socket
+             |> assign(:share_form, share_form(params))
+             |> assign(:composer_mode, :create)
+             |> put_flash(:error, "Unable to create room.")}
+        end
 
       {:error, :invalid_tweet_url} ->
         {:noreply,
          socket
-         |> assign(:share_form, share_form(share_params))
+         |> assign(:share_form, share_form(params))
+         |> assign(:composer_mode, :create)
          |> put_flash(:error, "Please enter a valid link.")}
-
-      {:error, _} ->
-        {:noreply,
-         socket
-         |> assign(:share_form, share_form(share_params))
-         |> put_flash(:error, "Unable to create room.")}
     end
   end
 
   @impl true
   def handle_event("set_feed_sort", %{"sort" => sort}, socket) do
     next_sort = normalize_feed_sort(sort)
-    {:noreply, assign_feed(socket, next_sort)}
+    {:noreply, assign_feed(socket, next_sort, socket.assigns.feed_embed_filter)}
+  end
+
+  @impl true
+  def handle_event("set_feed_embed", %{"embed" => embed_filter}, socket) do
+    next_filter = normalize_feed_embed_filter(embed_filter)
+    {:noreply, assign_feed(socket, socket.assigns.feed_sort, next_filter)}
   end
 
   @impl true
   def handle_info(:refresh_feed, socket) do
     socket =
       socket
-      |> assign_feed(socket.assigns.feed_sort)
+      |> assign_feed(socket.assigns.feed_sort, socket.assigns.feed_embed_filter)
       |> maybe_schedule_feed_refresh()
 
     {:noreply, socket}
@@ -186,59 +235,93 @@ defmodule MatdoriWeb.ShareLive do
         <.form
           for={@share_form}
           id="share-room-form"
-          phx-submit={if @composer_mode == :create, do: "share_room", else: "search_link"}
+          phx-submit="search_link"
           class="x-compose-form"
         >
-          <div class="x-compose-primary-row">
-            <.input
-              id="share-link-url"
-              field={@share_form[:tweet_url]}
-              type="url"
-              class="x-compose-input"
-              placeholder="Enter a link first"
-            />
+          <%= if @composer_mode == :search do %>
+            <div class="x-compose-primary-row">
+              <.input
+                id="share-link-url"
+                field={@share_form[:tweet_url]}
+                type="url"
+                class="x-compose-input"
+                placeholder="Enter a link first"
+              />
 
-            <div class="x-compose-cta-row">
-              <button
-                :if={@composer_mode == :search}
-                id="share-room-search"
-                type="submit"
-                class="mat-btn-secondary"
-              >
-                Search
-              </button>
+              <div class="x-compose-cta-row">
+                <button
+                  :if={@search_status != :not_found}
+                  id="share-room-search"
+                  type="submit"
+                  class="mat-btn-secondary"
+                >
+                  Search
+                </button>
 
-              <button
-                :if={@composer_mode == :search and @search_status == :not_found}
-                id="share-room-start-create"
-                type="button"
-                phx-click="start_create"
-                class="mat-btn-primary"
-              >
-                Create New Room
-              </button>
+                <button
+                  :if={@search_status == :not_found}
+                  id="share-room-start-create"
+                  type="button"
+                  phx-click="start_create"
+                  class="mat-btn-primary"
+                >
+                  Create New Room
+                </button>
+              </div>
+            </div>
+          <% end %>
+        </.form>
 
-              <button
-                :if={@composer_mode == :create}
-                id="share-room-submit"
-                type="submit"
-                class="mat-btn-primary"
+        <%= if @composer_mode == :create do %>
+          <div id="share-create-modal-backdrop" class="x-create-modal-backdrop">
+            <div id="share-create-modal-card" class="x-create-modal-card">
+              <div class="x-create-modal-head">
+                <p class="x-create-modal-title">Create New Room</p>
+                <button
+                  id="share-create-cancel"
+                  type="button"
+                  phx-click="cancel_create"
+                  class="x-create-modal-close"
+                >
+                  <.icon name="hero-x-mark" class="h-4 w-4" />
+                </button>
+              </div>
+
+              <.form
+                for={@share_form}
+                id="share-create-form"
+                phx-submit="share_room"
+                class="x-create-modal-form"
               >
-                <.icon name="hero-plus" class="h-4 w-4" /> Create Room
-              </button>
+                <.input
+                  id="share-create-link-url"
+                  field={@share_form[:tweet_url]}
+                  type="url"
+                  class="x-compose-input"
+                  placeholder="Enter a link"
+                  required
+                />
+                <.input
+                  id="share-title"
+                  field={@share_form[:title]}
+                  type="text"
+                  class="x-compose-link"
+                  placeholder="Enter a title for the room"
+                  required
+                />
+
+                <div class="x-create-modal-actions">
+                  <button type="button" phx-click="cancel_create" class="mat-btn-secondary">
+                    Cancel
+                  </button>
+                  <button id="share-room-submit" type="submit" class="mat-btn-primary">
+                    <.icon name="hero-plus" class="h-4 w-4" /> Create Room
+                  </button>
+                </div>
+              </.form>
             </div>
           </div>
-
-          <.input
-            :if={@composer_mode == :create}
-            id="share-title"
-            field={@share_form[:title]}
-            type="text"
-            class="x-compose-link"
-            placeholder="Enter a title for the room"
-            required
-          />
-        </.form>
+        <% end %>
 
         <%= if !@authenticated do %>
           <div id="share-login-required" class="x-login-required">
@@ -259,6 +342,36 @@ defmodule MatdoriWeb.ShareLive do
               <option value="live" selected={@feed_sort == "live"}>Live Popular</option>
             </select>
           </form>
+
+          <div id="share-embed-filter-buttons" class="x-feed-embed-filters">
+            <button
+              id="share-embed-filter-all"
+              type="button"
+              phx-click="set_feed_embed"
+              phx-value-embed="all"
+              class={feed_embed_button_class(@feed_embed_filter == "all")}
+            >
+              All
+            </button>
+            <button
+              id="share-embed-filter-embedded"
+              type="button"
+              phx-click="set_feed_embed"
+              phx-value-embed="embedded"
+              class={feed_embed_button_class(@feed_embed_filter == "embedded")}
+            >
+              Embeddable
+            </button>
+            <button
+              id="share-embed-filter-preview"
+              type="button"
+              phx-click="set_feed_embed"
+              phx-value-embed="preview"
+              class={feed_embed_button_class(@feed_embed_filter == "preview")}
+            >
+              Preview Only
+            </button>
+          </div>
         </div>
 
         <%= if @feed_posts == [] do %>
@@ -363,7 +476,7 @@ defmodule MatdoriWeb.ShareLive do
     socket
   end
 
-  defp assign_feed(socket, sort) do
+  defp assign_feed(socket, sort, embed_filter) do
     posts =
       case sort do
         "views" -> Collab.list_posts(@feed_limit, sort: "views")
@@ -371,13 +484,15 @@ defmodule MatdoriWeb.ShareLive do
         _ -> Collab.list_posts(@feed_limit, sort: "latest")
       end
 
-    active_counts = active_counts_map(posts)
+    filtered_posts = filter_feed_by_embed(posts, embed_filter)
+
+    active_counts = active_counts_map(filtered_posts)
 
     sorted_posts =
       case sort do
         "live" ->
           Enum.sort_by(
-            posts,
+            filtered_posts,
             fn post ->
               {Map.get(active_counts, post.id, 0), post.inserted_at, post.id}
             end,
@@ -385,14 +500,25 @@ defmodule MatdoriWeb.ShareLive do
           )
 
         _ ->
-          posts
+          filtered_posts
       end
 
     socket
     |> assign(:feed_sort, sort)
+    |> assign(:feed_embed_filter, embed_filter)
     |> assign(:feed_posts, sorted_posts)
     |> assign(:active_counts, active_counts)
     |> assign(:feed_loaded?, true)
+  end
+
+  defp filter_feed_by_embed(posts, "all"), do: posts
+
+  defp filter_feed_by_embed(posts, "embedded") do
+    Enum.filter(posts, &(Embed.classify(&1.tweet_url).mode == :native_embed))
+  end
+
+  defp filter_feed_by_embed(posts, "preview") do
+    Enum.filter(posts, &(Embed.classify(&1.tweet_url).mode == :preview_only))
   end
 
   defp active_counts_map(posts) do
@@ -413,6 +539,22 @@ defmodule MatdoriWeb.ShareLive do
 
   defp normalize_feed_sort(sort) when sort in ["latest", "views", "live"], do: sort
   defp normalize_feed_sort(_sort), do: "latest"
+
+  defp normalize_feed_embed_filter(filter) when filter in @embed_filters, do: filter
+  defp normalize_feed_embed_filter(_filter), do: "all"
+
+  defp open_create_param?(params) when is_map(params) do
+    Map.get(params, "create") in ["1", "true", "yes"]
+  end
+
+  defp open_create_param?(_params), do: false
+
+  defp feed_embed_button_class(active?) do
+    [
+      "mat-control-chip",
+      if(active?, do: "is-active", else: nil)
+    ]
+  end
 
   defp display_title(post) do
     case String.trim(post.title || "") do

@@ -114,6 +114,7 @@ const XEmbed = {
         await window.twttr.widgets.createTweet(tweetId, this.el, {
           dnt: true,
           align: "center",
+          theme: "dark",
         })
         this.el.dataset.embedStatus = "ready"
       } else {
