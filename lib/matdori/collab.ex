@@ -556,6 +556,16 @@ defmodule Matdori.Collab do
     )
   end
 
+  def list_room_comments(post_id) when is_integer(post_id) do
+    Repo.all(
+      from c in Comment,
+        where: c.post_id == ^post_id and is_nil(c.highlight_id),
+        order_by: [asc: c.inserted_at, asc: c.id]
+    )
+  end
+
+  def list_room_comments(_post_id), do: []
+
   def list_overlay_highlights(post_id) when is_integer(post_id) do
     Repo.all(
       from h in OverlayHighlight,
@@ -656,6 +666,19 @@ defmodule Matdori.Collab do
     %Comment{}
     |> Comment.changeset(%{
       highlight_id: highlight_id,
+      session_id: attrs["session_id"],
+      google_uid: normalize_google_uid(attrs["google_uid"]),
+      display_name: attrs["display_name"],
+      color: normalize_overlay_color(attrs["color"] || attrs[:color]),
+      body: attrs["body"]
+    })
+    |> Repo.insert()
+  end
+
+  def create_room_comment(post_id, attrs) do
+    %Comment{}
+    |> Comment.changeset(%{
+      post_id: post_id,
       session_id: attrs["session_id"],
       google_uid: normalize_google_uid(attrs["google_uid"]),
       display_name: attrs["display_name"],

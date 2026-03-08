@@ -50,6 +50,33 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert to == ~p"/login"
   end
 
+  test "room page allows posting room-level comments at the bottom", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "전체 댓글 방",
+                 "tweet_url" => "https://x.com/room_comment_user/status/#{id}"
+               },
+               "room-live-room-comment"
+             )
+
+    {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
+
+    assert has_element?(view, "#room-comment-form")
+
+    render_submit(element(view, "#room-comment-form"), %{
+      "room_comment" => %{"body" => "방 전체에 대한 의견입니다"}
+    })
+
+    assert has_element?(view, "#room-comments-list article")
+
+    [comment | _] = Collab.list_room_comments(post.id)
+    assert comment.body == "방 전체에 대한 의견입니다"
+  end
+
   test "x room shows native embed status", %{conn: conn} do
     conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))

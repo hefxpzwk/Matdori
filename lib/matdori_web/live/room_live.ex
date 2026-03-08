@@ -34,6 +34,8 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:selected_version, nil)
       |> assign(:segments, [])
       |> assign(:highlights, [])
+      |> assign(:room_comments, [])
+      |> assign(:room_comment_form, empty_room_comment_form())
       |> assign(:overlay_highlights, [])
       |> assign(:selected_highlight_id, nil)
       |> assign(:like_count, 0)
@@ -246,6 +248,39 @@ defmodule MatdoriWeb.RoomLive do
 
       _ ->
         {:noreply, put_flash(socket, :error, "Please select a highlight first.")}
+    end
+  end
+
+  def handle_event("room_comment_submit", %{"room_comment" => %{"body" => body}}, socket) do
+    with true <- socket.assigns.authenticated,
+         :ok <- RateLimiter.allow?(socket.assigns.session_id, :comment_submit, @action_limit),
+         %{id: post_id} <- socket.assigns.post,
+         {:ok, _comment} <-
+           Collab.create_room_comment(post_id, %{
+             "session_id" => socket.assigns.session_id,
+             "google_uid" => socket.assigns.google_uid,
+             "display_name" => socket.assigns.display_name,
+             "color" => socket.assigns.color,
+             "body" => body
+           }) do
+      broadcast_refresh(socket)
+
+      {:noreply,
+       socket
+       |> reload_current_room()
+       |> assign(:room_comment_form, empty_room_comment_form())}
+    else
+      false ->
+        login_required_reply(socket)
+
+      {:error, :rate_limited} ->
+        {:noreply, put_flash(socket, :error, "Too many comment requests. Please wait a moment.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Unable to save room comment.")}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -783,6 +818,75 @@ defmodule MatdoriWeb.RoomLive do
             >
             </div>
           </article>
+
+          <div id="room-comments-section" class="mat-surface space-y-4 p-5 sm:p-6">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-chat-bubble-left-right" class="h-5 w-5 text-teal-600" />
+              <h2 id="room-comments-title" class="text-base font-black tracking-tight text-slate-900">
+                Room Comments
+              </h2>
+            </div>
+
+            <%= if @authenticated do %>
+              <.form for={@room_comment_form} id="room-comment-form" phx-submit="room_comment_submit">
+                <.input
+                  field={@room_comment_form[:body]}
+                  type="textarea"
+                  id="room-comment-body"
+                  placeholder="Leave a comment about the whole room"
+                  rows="3"
+                />
+                <div class="mt-2 flex justify-end">
+                  <button
+                    id="room-comment-submit"
+                    type="submit"
+                    class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                  >
+                    <.icon name="hero-paper-airplane" class="h-3.5 w-3.5" /> Post Comment
+                  </button>
+                </div>
+              </.form>
+            <% else %>
+              <p id="room-comment-login-note" class="text-sm text-slate-600">
+                Log in to leave a room-level comment.
+              </p>
+            <% end %>
+
+            <div id="room-comments-list" class="space-y-2">
+              <div :if={@room_comments == []} id="room-comments-empty" class="text-sm text-slate-500">
+                No room comments yet.
+              </div>
+
+              <article
+                :for={comment <- @room_comments}
+                id={"room-comment-#{comment.id}"}
+                class="rounded-xl border border-slate-200 bg-white p-3"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-xs font-semibold text-slate-700">{comment.display_name}</p>
+                    <p class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">
+                      {comment.body}
+                    </p>
+                  </div>
+
+                  <button
+                    :if={
+                      @authenticated and comment.session_id == @session_id and
+                        comment.body != "[deleted]"
+                    }
+                    id={"room-comment-delete-#{comment.id}"}
+                    type="button"
+                    phx-click="delete_comment"
+                    phx-value-id={comment.id}
+                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"
+                  >
+                    <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
         <% else %>
           <div
             id="empty-state"
@@ -809,6 +913,8 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:selected_version, nil)
         |> assign(:segments, [])
         |> assign(:highlights, [])
+        |> assign(:room_comments, [])
+        |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, [])
         |> assign(:like_count, 0)
         |> assign(:dislike_count, 0)
@@ -829,6 +935,7 @@ defmodule MatdoriWeb.RoomLive do
         version = selected_version || (post.current_snapshot && post.current_snapshot.version)
         active_snapshot = resolve_snapshot(post, version)
         highlights = if active_snapshot, do: Collab.list_highlights(active_snapshot.id), else: []
+        room_comments = Collab.list_room_comments(post.id)
         overlay_highlights = Collab.list_overlay_highlights(post.id)
 
         socket =
@@ -846,6 +953,8 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:snapshot_versions, Enum.map(post.snapshots, & &1.version))
         |> assign(:selected_version, active_snapshot && active_snapshot.version)
         |> assign(:highlights, highlights)
+        |> assign(:room_comments, room_comments)
+        |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, overlay_highlights)
         |> assign(
           :segments,
@@ -882,6 +991,10 @@ defmodule MatdoriWeb.RoomLive do
   defp room_path({:post, post_id}), do: ~p"/rooms/#{post_id}"
 
   defp room_path_with_version(path, version), do: path <> "?v=#{version}"
+
+  defp empty_room_comment_form do
+    to_form(%{"body" => ""}, as: :room_comment)
+  end
 
   defp maybe_subscribe_to_topics(socket, post) do
     previous_post_id = socket.assigns.post && socket.assigns.post.id
