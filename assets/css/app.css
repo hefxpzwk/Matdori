@@ -31,6 +31,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: hidden;
   color: var(--mat-text);
   font-family: "SUIT Variable", "Pretendard Variable", "Noto Sans KR", "Apple SD Gothic Neo",
     "Segoe UI", sans-serif;
@@ -65,8 +66,8 @@ select:focus-visible {
 .mat-shell {
   position: relative;
   min-height: 100vh;
-  height: 100vh;
-  overflow: hidden;
+  height: auto;
+  overflow: visible;
   color: var(--mat-text);
   isolation: isolate;
 }
@@ -352,17 +353,17 @@ select:focus-visible {
 
 .x-page-content {
   padding: 0;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 .x-main-column {
   min-height: 100vh;
-  height: 100vh;
+  height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   border-left: 1px solid rgb(15 23 42 / 8%);
   border-right: 1px solid rgb(15 23 42 / 8%);
   background: #ffffff;
@@ -835,7 +836,7 @@ select:focus-visible {
 
 .x-compose-wrap {
   border-bottom: 1px solid rgb(15 23 42 / 10%);
-  padding: 1.1rem 0.7rem;
+  padding: 1.1rem 0 0.9rem;
 }
 
 .x-compose-head {
@@ -939,7 +940,7 @@ select:focus-visible {
 }
 
 .x-feed-wrap {
-  padding: 0.9rem 0.7rem 1.1rem;
+  padding: 0.9rem 0 1.1rem;
 }
 
 .x-feed-controls {
@@ -948,6 +949,7 @@ select:focus-visible {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
+  width: 100%;
 }
 
 .x-feed-select {
@@ -1218,10 +1220,10 @@ select:focus-visible {
 .x-main-column {
   --x-gutter: clamp(0.75rem, 2.5vw, 2rem);
   min-height: 100vh;
-  height: 100vh;
+  height: auto;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgb(15 23 42 / 11%);
   border-radius: 1.2rem;
   background: #ffffff;
@@ -1237,11 +1239,15 @@ select:focus-visible {
 }
 
 .x-global-head-inner {
-  min-height: 4.1rem;
-  padding: 0.64rem var(--x-gutter);
+  min-height: 4.05rem;
+  padding: 0.5rem var(--x-gutter);
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.52rem;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .x-global-logo-link {
@@ -1250,7 +1256,7 @@ select:focus-visible {
   gap: 0.5rem;
   color: #f8fafc;
   text-decoration: none;
-  font-size: 1.36rem;
+  font-size: 1.38rem;
   font-weight: 860;
   letter-spacing: 0.015em;
   line-height: 1;
@@ -1268,23 +1274,32 @@ select:focus-visible {
 .x-top-nav {
   display: flex;
   align-items: center;
-  gap: 0.36rem;
+  gap: 0.2rem;
   min-width: 0;
+  flex: 1 1 0%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.x-top-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .x-top-nav-item {
-  min-height: 2.25rem;
+  min-height: 2.2rem;
   border-radius: 999px;
-  padding: 0 0.78rem;
+  padding: 0 0.72rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.38rem;
+  gap: 0.4rem;
   color: #cbd5e1;
   text-decoration: none;
-  font-size: 0.86rem;
+  font-size: 0.88rem;
   font-weight: 650;
   letter-spacing: 0.005em;
   transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .x-top-nav-item:hover {
@@ -1297,22 +1312,25 @@ select:focus-visible {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  min-width: 0;
+  max-width: min(44vw, 23rem);
 }
 
 .x-top-create-btn {
-  min-height: 2.35rem;
+  min-height: 2.22rem;
   border-radius: 999px;
   border: 1px solid rgb(45 212 191 / 62%);
   background: linear-gradient(135deg, #0ea5e9, #14b8a6);
   color: #f8fafc;
-  font-size: 0.82rem;
+  font-size: 0.83rem;
   font-weight: 720;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0 0.9rem;
+  padding: 0 0.84rem;
   transition: transform 180ms ease, filter 180ms ease;
 }
 
@@ -1323,14 +1341,14 @@ select:focus-visible {
 }
 
 .x-top-login {
-  min-height: 2.35rem;
+  min-height: 2.22rem;
   border-radius: 999px;
   border-color: rgb(203 213 225 / 44%);
   background: rgb(15 23 42 / 35%);
   color: #f8fafc;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 680;
-  padding: 0 0.9rem;
+  padding: 0 0.84rem;
 }
 
 .x-top-login:hover {
@@ -1341,19 +1359,23 @@ select:focus-visible {
 
 .x-top-profile-wrap {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .x-top-profile-trigger {
-  min-height: 2.35rem;
+  min-height: 2.22rem;
   border-radius: 999px;
   border: 1px solid rgb(148 163 184 / 34%);
   background: rgb(15 23 42 / 26%);
   color: #f8fafc;
-  padding: 0 0.55rem;
+  padding: 0 0.56rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.44rem;
   transition: background-color 180ms ease, border-color 180ms ease;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .x-top-profile-trigger:hover {
@@ -1362,8 +1384,8 @@ select:focus-visible {
 }
 
 .x-profile-avatar {
-  width: 1.74rem;
-  height: 1.74rem;
+  width: 1.7rem;
+  height: 1.7rem;
   border-radius: 999px;
   background: #0f172a;
   color: #ffffff;
@@ -1385,11 +1407,12 @@ select:focus-visible {
   min-width: 0;
   display: grid;
   gap: 0.04rem;
+  max-width: 9.2rem;
 }
 
 .x-profile-name {
   color: #f8fafc;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 640;
   line-height: 1.1;
   max-width: 8rem;
@@ -1401,7 +1424,7 @@ select:focus-visible {
 
 .x-profile-email {
   color: #cbd5e1;
-  font-size: 0.67rem;
+  font-size: 0.68rem;
   line-height: 1.05;
   max-width: 8rem;
   overflow: hidden;
@@ -1488,9 +1511,9 @@ select:focus-visible {
 
 .x-page-content {
   padding: 1.05rem var(--x-gutter) 1.9rem;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
+  flex: 1 0 auto;
+  min-height: auto;
+  overflow: visible;
 }
 
 @media (max-width: 1023px) {
@@ -1506,12 +1529,30 @@ select:focus-visible {
     padding-bottom: 0.18rem;
   }
 
+  .x-top-actions {
+    max-width: 100%;
+  }
+
   .x-top-nav-item {
     white-space: nowrap;
   }
 
   .x-profile-email {
     display: none;
+  }
+}
+
+@media (max-width: 1320px) {
+  .x-profile-email {
+    display: none;
+  }
+
+  .x-profile-meta {
+    max-width: 7.4rem;
+  }
+
+  .x-top-actions {
+    max-width: min(40vw, 18rem);
   }
 }
 
@@ -1596,29 +1637,29 @@ a {
 }
 
 .x-global-logo-link {
-  font-size: 2.25rem;
+  font-size: 1.55rem;
 }
 
 .x-global-head-inner {
-  min-height: 5.9rem;
-  gap: 1.3rem;
+  min-height: 4.2rem;
+  gap: 0.58rem;
 }
 
 .x-top-nav-item {
-  min-height: 3.6rem;
+  min-height: 2.2rem;
   border-radius: 999px;
-  padding: 0 1rem;
+  padding: 0 0.72rem;
   color: #ffffff;
-  font-size: 1.6rem;
-  font-weight: 700;
-  gap: 0.66rem;
+  font-size: 0.9rem;
+  font-weight: 680;
+  gap: 0.4rem;
   background: transparent;
 }
 
 .x-top-nav-text {
   color: #ffffff;
-  font-size: 1.6rem;
-  font-weight: 780;
+  font-size: 0.9rem;
+  font-weight: 720;
   letter-spacing: -0.01em;
   line-height: 1;
 }
@@ -1635,8 +1676,8 @@ a {
   background-size: 100% 100%;
   background-repeat: no-repeat;
   background-color: transparent !important;
-  width: 1.55rem;
-  height: 1.55rem;
+  width: 1.72rem;
+  height: 1.72rem;
 }
 
 .x-main-topbar {
@@ -1785,9 +1826,9 @@ a {
   border: 1px solid rgb(255 255 255 / 14%);
   color: #ffffff;
   background: var(--x-accent-gradient);
-  min-height: 3.2rem;
-  font-size: 1.16rem;
-  padding: 0 1.35rem;
+  min-height: 2.22rem;
+  font-size: 0.83rem;
+  padding: 0 0.84rem;
 }
 
 .x-top-create-btn:hover {
@@ -1798,9 +1839,9 @@ a {
   border: 1px solid #ffffff;
   background: #ffffff;
   color: #0a0a0a;
-  min-height: 3.2rem;
-  font-size: 1.16rem;
-  padding: 0 1.35rem;
+  min-height: 2.22rem;
+  font-size: 0.82rem;
+  padding: 0 0.84rem;
 }
 
 .x-top-login:hover {
@@ -1812,28 +1853,28 @@ a {
 .x-top-profile-trigger {
   border: 1px solid rgb(255 255 255 / 22%);
   background: rgb(17 19 26 / 92%);
-  min-height: 3.2rem;
-  padding: 0 0.95rem;
+  min-height: 2.22rem;
+  padding: 0 0.56rem;
 }
 
 .x-profile-avatar {
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 1.7rem;
+  height: 1.7rem;
 }
 
 .x-profile-name {
-  font-size: 1.04rem;
+  font-size: 0.8rem;
 }
 
 .x-profile-email {
-  font-size: 0.84rem;
+  font-size: 0.68rem;
 }
 
 @media (max-width: 1023px) {
   .x-global-logo-link,
   .x-top-nav-text,
   .x-top-nav-item {
-    font-size: 1.18rem;
+    font-size: 0.98rem;
   }
 
   .x-top-nav-icon {
@@ -1844,8 +1885,8 @@ a {
   .x-top-create-btn,
   .x-top-login,
   .x-top-profile-trigger {
-    min-height: 2.6rem;
-    font-size: 0.98rem;
+    min-height: 2.12rem;
+    font-size: 0.82rem;
   }
 }
 
@@ -1863,7 +1904,7 @@ a {
 }
 
 .x-compose-wrap {
-  padding: 0.16rem 0.7rem 0.82rem;
+  padding: 0.16rem 0 0.82rem;
 }
 
 .mat-shell .x-compose-input {
@@ -2038,6 +2079,8 @@ a {
   gap: 0.5rem;
   grid-auto-rows: 8px;
   align-items: start;
+  width: 100%;
+  max-width: 100%;
 }
 
 .x-media-card {

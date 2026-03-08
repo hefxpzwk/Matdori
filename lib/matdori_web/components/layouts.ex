@@ -51,7 +51,7 @@ defmodule MatdoriWeb.Layouts do
 
     ~H"""
     <div class="mat-shell min-h-screen" style={"--mat-accent: #{@accent_color};"}>
-      <section class="mx-auto h-full w-full max-w-[1440px] px-4 sm:px-7 lg:px-12">
+      <section class="mx-auto h-full w-full max-w-[1280px] px-4 sm:px-7 lg:px-12">
         <div class="x-home-grid x-home-grid--wide">
           <main id="x-main-column" class="x-main-column">
             <header id="x-global-header" class="x-global-header">
@@ -62,19 +62,19 @@ defmodule MatdoriWeb.Layouts do
 
                 <nav class="x-top-nav" aria-label="Main">
                   <a href={~p"/"} class="x-top-nav-item">
-                    <.icon name="hero-home-solid" class="size-8 x-top-nav-icon" />
+                    <.icon name="hero-home-solid" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Home</span>
                   </a>
                   <a href={~p"/rooms"} class="x-top-nav-item">
-                    <.icon name="hero-magnifying-glass" class="size-8 x-top-nav-icon" />
+                    <.icon name="hero-magnifying-glass" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Explore</span>
                   </a>
                   <a href={~p"/rooms"} class="x-top-nav-item">
-                    <.icon name="hero-fire" class="size-8 x-top-nav-icon" />
+                    <.icon name="hero-fire" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Trending</span>
                   </a>
                   <a :if={@authenticated and @display_name} href={~p"/me"} class="x-top-nav-item">
-                    <.icon name="hero-user" class="size-8 x-top-nav-icon" />
+                    <.icon name="hero-user" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Profile</span>
                   </a>
                 </nav>
