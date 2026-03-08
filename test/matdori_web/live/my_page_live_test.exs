@@ -84,9 +84,11 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-tab-highlighted")
     assert has_element?(view, "#my-tab-liked")
     assert has_element?(view, "#my-profile-edit-toggle")
+    assert has_element?(view, "#my-profile-color")
     refute has_element?(view, "#my-profile-edit-modal")
 
     assert has_element?(view, "#my-created-room-#{created_post.id}")
+    assert has_element?(view, "#my-created-delete-#{created_post.id}")
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
     refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
 
@@ -96,20 +98,36 @@ defmodule MatdoriWeb.MyPageLiveTest do
 
     _html = view |> element("#my-tab-highlighted") |> render_click()
     assert has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    assert has_element?(view, "#my-highlighted-delete-#{highlighted_post.id}")
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
+
+    _html = view |> element("#my-highlighted-delete-#{highlighted_post.id}") |> render_click()
+    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    assert has_element?(view, "#my-highlighted-empty")
+
+    _html = view |> element("#my-tab-created") |> render_click()
+    assert has_element?(view, "#my-created-room-#{created_post.id}")
+    _html = view |> element("#my-created-delete-#{created_post.id}") |> render_click()
+    refute has_element?(view, "#my-created-room-#{created_post.id}")
+    assert has_element?(view, "#my-created-empty")
 
     _html = view |> element("#my-profile-edit-toggle") |> render_click()
     assert has_element?(view, "#my-profile-edit-modal")
     assert has_element?(view, "#my-profile-edit-form")
     assert has_element?(view, "#my-profile-name-input")
     assert has_element?(view, "#my-profile-interests-input")
+    assert has_element?(view, "#my-profile-color-input")
+    assert has_element?(view, "#my-profile-color-presets")
+
+    _html = view |> element("#my-profile-color-preset-ef4444") |> render_click()
 
     _html =
       view
       |> form("#my-profile-edit-form", %{
         "profile" => %{
           "display_name" => "수정된 유저",
-          "interests_input" => "AI · 디자인 시스템, 제품 전략, AI · 디자인 시스템"
+          "interests_input" => "AI · 디자인 시스템, 제품 전략, AI · 디자인 시스템",
+          "color" => "#ef4444"
         }
       })
       |> render_submit()
@@ -119,9 +137,11 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-profile-interest", "제품 전략")
     refute has_element?(view, "#my-profile-edit-modal")
 
+    assert %{color: "#ef4444"} = Collab.get_profile_by_google_uid(google_uid)
+
     _html = view |> element("#profile-topbar-title") |> render_click()
 
-    assert has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
     assert has_element?(view, "#my-profile-name", "수정된 유저")
     assert has_element?(view, "#my-profile-interest", "AI · 디자인 시스템")
   end

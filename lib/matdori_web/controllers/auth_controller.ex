@@ -26,6 +26,7 @@ defmodule MatdoriWeb.AuthController do
   def callback(%{assigns: %{ueberauth_auth: auth}} = conn, _params) do
     return_to = get_session(conn, :user_return_to) || ~p"/"
     display_name = profile_or_google_display_name(auth.uid, auth.info.name, auth.info.email)
+    color = profile_or_default_color(auth.uid)
 
     conn
     |> configure_session(renew: true)
@@ -35,6 +36,7 @@ defmodule MatdoriWeb.AuthController do
     |> put_session(:google_avatar, auth.info.image)
     |> put_session(:session_id, Ecto.UUID.generate())
     |> put_session(:display_name, display_name)
+    |> put_session(:color, color)
     |> redirect(to: return_to)
   end
 
@@ -78,6 +80,13 @@ defmodule MatdoriWeb.AuthController do
 
       _ ->
         normalize_display_name(google_name, google_email)
+    end
+  end
+
+  defp profile_or_default_color(google_uid) do
+    case Collab.get_profile_by_google_uid(google_uid) do
+      %{color: color} when is_binary(color) and color != "" -> color
+      _ -> "#3b82f6"
     end
   end
 end

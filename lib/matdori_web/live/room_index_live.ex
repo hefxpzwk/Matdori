@@ -15,6 +15,7 @@ defmodule MatdoriWeb.RoomIndexLive do
      socket
      |> assign(:posts, [])
      |> assign(:display_name, session["display_name"])
+     |> assign(:color, session["color"])
      |> assign(:email, session["google_email"])
      |> assign(:avatar_url, session["google_avatar"])
      |> assign(:authenticated, authenticated)
@@ -46,6 +47,7 @@ defmodule MatdoriWeb.RoomIndexLive do
       current_scope={
         %{
           display_name: @display_name,
+          color: @color,
           email: @email,
           avatar_url: @avatar_url,
           authenticated: @authenticated

@@ -18,6 +18,7 @@ defmodule MatdoriWeb.ShareLive do
      |> assign(:session_id, session["session_id"])
      |> assign(:google_uid, session["google_uid"])
      |> assign(:display_name, session["display_name"])
+     |> assign(:color, session["color"])
      |> assign(:email, session["google_email"])
      |> assign(:avatar_url, session["google_avatar"])
      |> assign(:authenticated, authenticated)
@@ -173,6 +174,7 @@ defmodule MatdoriWeb.ShareLive do
       current_scope={
         %{
           display_name: @display_name,
+          color: @color,
           email: @email,
           avatar_url: @avatar_url,
           authenticated: @authenticated

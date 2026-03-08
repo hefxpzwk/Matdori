@@ -90,20 +90,22 @@ defmodule Matdori.Collab do
     if uid do
       case Repo.get_by(UserProfile, google_uid: uid) do
         nil ->
-          %{display_name: nil, interests: []}
+          %{display_name: nil, interests: [], color: nil}
 
         profile ->
           %{
             display_name: normalize_profile_display_name(profile.display_name),
-            interests: normalize_interests(profile.interests || infer_interests(profile.interest))
+            interests:
+              normalize_interests(profile.interests || infer_interests(profile.interest)),
+            color: normalize_profile_color(profile.color)
           }
       end
     else
-      %{display_name: nil, interests: []}
+      %{display_name: nil, interests: [], color: nil}
     end
   end
 
-  def get_profile_by_google_uid(_google_uid), do: %{display_name: nil, interests: []}
+  def get_profile_by_google_uid(_google_uid), do: %{display_name: nil, interests: [], color: nil}
 
   def get_interest_by_google_uid(google_uid) do
     google_uid
@@ -119,10 +121,12 @@ defmodule Matdori.Collab do
     if uid do
       cleaned_name = normalize_profile_display_name(attrs["display_name"] || attrs[:display_name])
       cleaned_interests = normalize_interests(attrs["interests"] || attrs[:interests])
+      cleaned_color = normalize_profile_color(attrs["color"] || attrs[:color])
       fallback_interest = List.first(cleaned_interests) || ""
 
       profile = Repo.get_by(UserProfile, google_uid: uid) || %UserProfile{google_uid: uid}
       resolved_name = cleaned_name || normalize_profile_display_name(profile.display_name)
+      resolved_color = cleaned_color || normalize_profile_color(profile.color) || "#3b82f6"
 
       Multi.new()
       |> Multi.insert_or_update(
@@ -130,12 +134,16 @@ defmodule Matdori.Collab do
         UserProfile.changeset(profile, %{
           google_uid: uid,
           display_name: resolved_name,
+          color: resolved_color,
           interests: cleaned_interests,
           interest: fallback_interest
         })
       )
       |> Multi.run(:sync_display_names, fn _repo, _changes ->
         sync_display_name_for_google_uid(uid, resolved_name)
+      end)
+      |> Multi.run(:sync_colors, fn _repo, _changes ->
+        sync_color_for_google_uid(uid, resolved_color)
       end)
       |> Repo.transaction()
       |> case do
@@ -419,6 +427,114 @@ defmodule Matdori.Collab do
     end
   end
 
+  def delete_post_by_owner(post_id, google_uid)
+      when is_integer(post_id) and is_binary(google_uid) do
+    uid = normalize_google_uid(google_uid)
+
+    if uid do
+      case Repo.get(Post, post_id) do
+        nil ->
+          {:error, :not_found}
+
+        %Post{} = post ->
+          if post.creator_google_uid == uid do
+            post
+            |> Post.changeset(%{hidden: true, hidden_reason: "deleted_by_owner"})
+            |> Repo.update()
+          else
+            {:error, :forbidden}
+          end
+      end
+    else
+      {:error, :invalid_google_uid}
+    end
+  end
+
+  def delete_post_by_owner(_post_id, _google_uid), do: {:error, :invalid_google_uid}
+
+  def delete_highlights_for_user_in_post(post_id, google_uid, session_id \\ nil)
+
+  def delete_highlights_for_user_in_post(post_id, google_uid, session_id)
+      when is_integer(post_id) do
+    uid = normalize_google_uid(google_uid)
+    sid = normalize_session_id(session_id)
+
+    {deleted_text, deleted_overlay} =
+      cond do
+        is_binary(uid) and is_binary(sid) ->
+          text_deleted =
+            Repo.delete_all(
+              from h in Highlight,
+                join: s in PostSnapshot,
+                on: s.id == h.post_snapshot_id,
+                where:
+                  s.post_id == ^post_id and
+                    (h.google_uid == ^uid or (is_nil(h.google_uid) and h.session_id == ^sid))
+            )
+
+          overlay_deleted =
+            Repo.delete_all(
+              from h in OverlayHighlight,
+                where:
+                  h.post_id == ^post_id and
+                    (h.google_uid == ^uid or (is_nil(h.google_uid) and h.session_id == ^sid))
+            )
+
+          {elem(text_deleted, 0), elem(overlay_deleted, 0)}
+
+        is_binary(uid) ->
+          text_deleted =
+            Repo.delete_all(
+              from h in Highlight,
+                join: s in PostSnapshot,
+                on: s.id == h.post_snapshot_id,
+                where: s.post_id == ^post_id and h.google_uid == ^uid
+            )
+
+          overlay_deleted =
+            Repo.delete_all(
+              from h in OverlayHighlight,
+                where: h.post_id == ^post_id and h.google_uid == ^uid
+            )
+
+          {elem(text_deleted, 0), elem(overlay_deleted, 0)}
+
+        is_binary(sid) ->
+          text_deleted =
+            Repo.delete_all(
+              from h in Highlight,
+                join: s in PostSnapshot,
+                on: s.id == h.post_snapshot_id,
+                where: s.post_id == ^post_id and h.session_id == ^sid
+            )
+
+          overlay_deleted =
+            Repo.delete_all(
+              from h in OverlayHighlight,
+                where: h.post_id == ^post_id and h.session_id == ^sid
+            )
+
+          {elem(text_deleted, 0), elem(overlay_deleted, 0)}
+
+        true ->
+          {-1, -1}
+      end
+
+    if deleted_text >= 0 and deleted_overlay >= 0 do
+      {:ok,
+       %{
+         deleted_text: deleted_text,
+         deleted_overlay: deleted_overlay,
+         deleted_total: deleted_text + deleted_overlay
+       }}
+    else
+      {:error, :invalid_owner}
+    end
+  end
+
+  def delete_highlights_for_user_in_post(_post_id, _google_uid, _session_id),
+    do: {:error, :invalid_owner}
+
   def restore_today_post do
     case get_today_post() do
       nil ->
@@ -543,6 +659,7 @@ defmodule Matdori.Collab do
       session_id: attrs["session_id"],
       google_uid: normalize_google_uid(attrs["google_uid"]),
       display_name: attrs["display_name"],
+      color: normalize_overlay_color(attrs["color"] || attrs[:color]),
       body: attrs["body"]
     })
     |> Repo.insert()
@@ -681,6 +798,27 @@ defmodule Matdori.Collab do
     Repo.update_all(
       from(r in Report, where: r.google_uid == ^google_uid),
       set: [display_name: display_name]
+    )
+
+    {:ok, :synced}
+  end
+
+  defp sync_color_for_google_uid(_google_uid, nil), do: {:ok, :skipped}
+
+  defp sync_color_for_google_uid(google_uid, color) do
+    Repo.update_all(
+      from(h in Highlight, where: h.google_uid == ^google_uid),
+      set: [color: color]
+    )
+
+    Repo.update_all(
+      from(h in OverlayHighlight, where: h.google_uid == ^google_uid),
+      set: [color: color]
+    )
+
+    Repo.update_all(
+      from(c in Comment, where: c.google_uid == ^google_uid),
+      set: [color: color]
     )
 
     {:ok, :synced}
@@ -1180,6 +1318,18 @@ defmodule Matdori.Collab do
   end
 
   defp normalize_profile_display_name(_value), do: nil
+
+  defp normalize_profile_color(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, trimmed) do
+      String.downcase(trimmed)
+    else
+      nil
+    end
+  end
+
+  defp normalize_profile_color(_value), do: nil
 
   defp normalize_interests(value) when is_binary(value) do
     value

@@ -222,6 +222,7 @@ defmodule MatdoriWeb.RoomLive do
              "session_id" => socket.assigns.session_id,
              "google_uid" => socket.assigns.google_uid,
              "display_name" => socket.assigns.display_name,
+             "color" => socket.assigns.color,
              "body" => body
            }) do
       broadcast_refresh(socket)
@@ -419,6 +420,7 @@ defmodule MatdoriWeb.RoomLive do
       current_scope={
         %{
           display_name: @display_name,
+          color: @color,
           email: @email,
           avatar_url: @avatar_url,
           authenticated: @authenticated
@@ -986,13 +988,17 @@ defmodule MatdoriWeb.RoomLive do
     normalize_hex_color(meta_color(presence), "#64748b")
   end
 
+  defp unique_cursor_color(_session_id, fallback) when is_binary(fallback) do
+    normalize_hex_color(fallback, "#3b82f6")
+  end
+
   defp unique_cursor_color(session_id, _fallback)
        when is_binary(session_id) and session_id != "" do
     hue = :erlang.phash2(session_id, 360) / 360
     hsl_to_hex(hue, 0.72, 0.52)
   end
 
-  defp unique_cursor_color(_session_id, fallback), do: normalize_hex_color(fallback, "#3b82f6")
+  defp unique_cursor_color(_session_id, _fallback), do: "#3b82f6"
 
   defp normalize_hex_color(value, default) do
     if is_binary(value) and Regex.match?(~r/^#[0-9a-fA-F]{6}$/, value) do

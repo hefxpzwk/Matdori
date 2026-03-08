@@ -44,12 +44,13 @@ defmodule MatdoriWeb.Layouts do
       |> assign(:display_name, scope_display_name(assigns[:current_scope]))
       |> assign(:email, scope_email(assigns[:current_scope]))
       |> assign(:avatar_url, scope_avatar_url(assigns[:current_scope]))
+      |> assign(:accent_color, scope_color(assigns[:current_scope]))
       |> assign(:topbar_mode, topbar_mode(assigns[:topbar]))
       |> assign(:topbar_title, topbar_title(assigns[:topbar]))
       |> assign(:topbar_refresh_event, topbar_refresh_event(assigns[:topbar]))
 
     ~H"""
-    <div class="mat-shell min-h-screen">
+    <div class="mat-shell min-h-screen" style={"--mat-accent: #{@accent_color};"}>
       <section class="mx-auto h-full w-full max-w-[1320px] px-3 sm:px-4">
         <div class="x-home-grid x-home-grid--wide">
           <aside id="x-left-rail" class="x-left-rail">
@@ -248,6 +249,10 @@ defmodule MatdoriWeb.Layouts do
   defp scope_avatar_url(%{"avatar_url" => url}) when is_binary(url) and url != "", do: url
   defp scope_avatar_url(_), do: nil
 
+  defp scope_color(%{color: color}) when is_binary(color), do: normalize_color(color)
+  defp scope_color(%{"color" => color}) when is_binary(color), do: normalize_color(color)
+  defp scope_color(_), do: "#3b82f6"
+
   defp topbar_mode(%{mode: :room}), do: :room
   defp topbar_mode(%{mode: :profile}), do: :profile
   defp topbar_mode(_), do: :default
@@ -263,4 +268,14 @@ defmodule MatdoriWeb.Layouts do
   defp scope_authenticated(%{authenticated: true}), do: true
   defp scope_authenticated(%{"authenticated" => true}), do: true
   defp scope_authenticated(_), do: false
+
+  defp normalize_color(value) do
+    trimmed = String.trim(value)
+
+    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, trimmed) do
+      String.downcase(trimmed)
+    else
+      "#3b82f6"
+    end
+  end
 end

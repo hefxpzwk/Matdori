@@ -251,6 +251,7 @@ defmodule Matdori.CollabTest do
                "session_id" => "sync-session",
                "google_uid" => google_uid,
                "display_name" => "이전 이름",
+               "color" => "#111111",
                "body" => "이전 댓글"
              })
 
@@ -283,10 +284,12 @@ defmodule Matdori.CollabTest do
     assert {:ok, _profile} =
              Collab.upsert_profile_by_google_uid(google_uid, %{
                display_name: "새 이름",
-               interests: ["AI"]
+               interests: ["AI"],
+               color: "#ef4444"
              })
 
     assert Repo.get!(Highlight, highlight.id).display_name == "새 이름"
+    assert Repo.get!(Highlight, highlight.id).color == "#ef4444"
 
     assert Repo.one!(
              from c in Comment, where: c.google_uid == ^google_uid, select: c.display_name
@@ -301,6 +304,116 @@ defmodule Matdori.CollabTest do
                where: o.google_uid == ^google_uid,
                select: o.display_name
            ) == "새 이름"
+
+    assert Repo.one!(
+             from o in OverlayHighlight,
+               where: o.google_uid == ^google_uid,
+               select: o.color
+           ) == "#ef4444"
+
+    assert Repo.one!(from c in Comment, where: c.google_uid == ^google_uid, select: c.color) ==
+             "#ef4444"
+  end
+
+  test "delete_post_by_owner/2 hides only owner-created post" do
+    owner_uid = "google-room-owner"
+
+    assert {:ok, owned_post} =
+             Collab.share_post(
+               %{
+                 "title" => "내 방",
+                 "tweet_url" =>
+                   "https://x.com/owner/status/#{System.unique_integer([:positive])}",
+                 "google_uid" => owner_uid
+               },
+               "owner-session"
+             )
+
+    assert {:error, :forbidden} = Collab.delete_post_by_owner(owned_post.id, "google-other-user")
+
+    assert {:ok, hidden_post} = Collab.delete_post_by_owner(owned_post.id, owner_uid)
+    assert hidden_post.hidden == true
+    assert hidden_post.hidden_reason == "deleted_by_owner"
+  end
+
+  test "delete_highlights_for_user_in_post/3 removes only own text/overlay highlights" do
+    post = insert_post_with_snapshot()
+    snapshot = Repo.preload(post, :current_snapshot).current_snapshot
+
+    owner_uid = "google-highlight-owner"
+    owner_session = "owner-session"
+    other_uid = "google-highlight-other"
+
+    assert {:ok, _} =
+             Collab.create_highlight(snapshot, %{
+               "session_id" => owner_session,
+               "google_uid" => owner_uid,
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "quote_exact" => "Hello",
+               "quote_prefix" => "",
+               "quote_suffix" => "",
+               "start_g" => 0,
+               "end_g" => 5
+             })
+
+    assert {:ok, _} =
+             Collab.create_highlight(snapshot, %{
+               "session_id" => "other-session",
+               "google_uid" => other_uid,
+               "display_name" => "Other",
+               "color" => "#222222",
+               "quote_exact" => "world",
+               "quote_prefix" => "",
+               "quote_suffix" => "",
+               "start_g" => 6,
+               "end_g" => 11
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: owner_session,
+               google_uid: owner_uid,
+               display_name: "Owner",
+               color: "#111111",
+               highlights: [
+                 %{
+                   "id" => "owner-overlay",
+                   "left" => 0.1,
+                   "top" => 0.1,
+                   "width" => 0.2,
+                   "height" => 0.2
+                 }
+               ]
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "other-session",
+               google_uid: other_uid,
+               display_name: "Other",
+               color: "#222222",
+               highlights: [
+                 %{
+                   "id" => "other-overlay",
+                   "left" => 0.4,
+                   "top" => 0.4,
+                   "width" => 0.2,
+                   "height" => 0.2
+                 }
+               ]
+             })
+
+    assert {:ok, %{deleted_total: 2, deleted_text: 1, deleted_overlay: 1}} =
+             Collab.delete_highlights_for_user_in_post(post.id, owner_uid, owner_session)
+
+    remaining_text = Repo.all(from h in Highlight, where: h.post_snapshot_id == ^snapshot.id)
+    remaining_overlay = Repo.all(from h in OverlayHighlight, where: h.post_id == ^post.id)
+
+    assert Enum.count(remaining_text) == 1
+    assert Enum.all?(remaining_text, &(&1.google_uid == other_uid))
+    assert Enum.count(remaining_overlay) == 1
+    assert Enum.all?(remaining_overlay, &(&1.google_uid == other_uid))
   end
 
   test "sync_configured_account_posts/1 imports posts and latest order follows tweet_posted_at" do

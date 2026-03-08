@@ -8,6 +8,7 @@ defmodule Matdori.Collab.Comment do
     field :session_id, :string
     field :google_uid, :string
     field :display_name, :string
+    field :color, :string
     field :body, :string
     field :deleted_at, :utc_datetime_usec
 
@@ -18,8 +19,17 @@ defmodule Matdori.Collab.Comment do
 
   def changeset(comment, attrs) do
     comment
-    |> cast(attrs, [:highlight_id, :session_id, :google_uid, :display_name, :body, :deleted_at])
+    |> cast(attrs, [
+      :highlight_id,
+      :session_id,
+      :google_uid,
+      :display_name,
+      :color,
+      :body,
+      :deleted_at
+    ])
     |> validate_required([:highlight_id, :session_id, :display_name, :body])
+    |> validate_format(:color, ~r/^#[0-9a-fA-F]{6}$/)
     |> validate_length(:body, min: 1, max: 500)
     |> foreign_key_constraint(:highlight_id)
   end

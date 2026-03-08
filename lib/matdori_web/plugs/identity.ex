@@ -56,11 +56,37 @@ defmodule MatdoriWeb.Plugs.Identity do
   defp profile_display_name(_google_uid), do: nil
 
   defp ensure_color(conn) do
-    case get_session(conn, :color) do
-      nil -> put_session(conn, :color, Enum.random(@colors))
-      _ -> conn
+    profile_color =
+      conn
+      |> get_session(:google_uid)
+      |> profile_color()
+
+    current_color = normalize_hex_color(get_session(conn, :color))
+    resolved = profile_color || current_color || Enum.random(@colors)
+
+    put_session(conn, :color, resolved)
+  end
+
+  defp profile_color(google_uid) when is_binary(google_uid) and google_uid != "" do
+    case Collab.get_profile_by_google_uid(google_uid) do
+      %{color: color} -> normalize_hex_color(color)
+      _ -> nil
     end
   end
+
+  defp profile_color(_google_uid), do: nil
+
+  defp normalize_hex_color(value) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    if Regex.match?(~r/^#[0-9a-fA-F]{6}$/, trimmed) do
+      String.downcase(trimmed)
+    else
+      nil
+    end
+  end
+
+  defp normalize_hex_color(_value), do: nil
 
   defp normalize_display_name(name) when is_binary(name) do
     case String.trim(name) do
