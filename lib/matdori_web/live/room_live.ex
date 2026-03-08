@@ -433,15 +433,9 @@ defmodule MatdoriWeb.RoomLive do
           authenticated: @authenticated
         }
       }
-      topbar={
-        %{
-          mode: :room,
-          title: if(@post, do: display_title(@post), else: "Room"),
-          refresh_event: "refresh_room_topbar"
-        }
-      }
+      topbar={%{mode: :default}}
     >
-      <section class="space-y-5" id="room-detail">
+      <section class="-mt-2 space-y-5" id="room-detail">
         <%= if @post do %>
           <article
             id="room-collab-stage"
@@ -450,7 +444,7 @@ defmodule MatdoriWeb.RoomLive do
             data-readonly={!@authenticated}
             class="mat-surface relative p-5 sm:p-6"
           >
-            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div class="-ml-5 mb-1 flex flex-wrap items-center justify-between gap-3 sm:-ml-6">
               <div class="flex items-center gap-2">
                 <h1 id="room-title" class="text-xl font-black tracking-tight text-slate-900">
                   {display_title(@post)}
@@ -473,290 +467,313 @@ defmodule MatdoriWeb.RoomLive do
               </a>
             </div>
 
-            <div
-              id="room-presence-panel"
-              class="mat-panel mb-4 p-4"
-            >
-              <p
-                id="room-presence-count"
-                aria-live="polite"
-                class="text-sm font-semibold text-slate-800"
-              >
-                Active {participant_count(@presence_members)}
-              </p>
-              <div id="room-presence-list" class="mt-2 flex flex-wrap items-center gap-2">
-                <span
-                  :for={{session_id, presence} <- @presence_members}
-                  id={"room-presence-user-#{session_id}"}
-                  class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
-                >
-                  <span
-                    class="h-2.5 w-2.5 rounded-full"
-                    style={"background-color: #{presence_color(presence)}"}
-                  >
-                  </span>
-                  {presence_label(presence, session_id, @session_id)}
-                </span>
-              </div>
-            </div>
-
-            <div id="room-reactions" class="mb-4 flex flex-wrap items-center gap-2">
-              <button
-                id="like-button"
-                type="button"
-                phx-click="toggle_reaction"
-                phx-value-kind="like"
-                disabled={!@authenticated}
-                class={[
-                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition",
-                  if(@liked,
-                    do: "border-emerald-400 bg-emerald-50 text-emerald-700",
-                    else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                  ),
-                  !@authenticated && "cursor-not-allowed opacity-50"
-                ]}
-              >
-                <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> Like
-                <span id="like-count">{@like_count}</span>
-              </button>
-
-              <button
-                id="dislike-button"
-                type="button"
-                phx-click="toggle_reaction"
-                phx-value-kind="dislike"
-                disabled={!@authenticated}
-                class={[
-                  "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition",
-                  if(@disliked,
-                    do: "border-rose-400 bg-rose-50 text-rose-700",
-                    else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                  ),
-                  !@authenticated && "cursor-not-allowed opacity-50"
-                ]}
-              >
-                <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> Dislike
-                <span id="dislike-count">{@dislike_count}</span>
-              </button>
-
-              <span
-                id="room-view-count"
-                class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700"
-              >
-                Views {@view_count}
-              </span>
-            </div>
-
-            <div :if={!@authenticated} id="room-login-required" class="mb-3 text-sm text-slate-600">
-              Guests can view only.
-              <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">
-                Log in
-              </.link>
-              to use reactions/highlights/comments.
-            </div>
-
-            <%= if @post.hidden do %>
-              <div
-                id="takedown-state"
-                class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800"
-              >
-                Content is unavailable.
-              </div>
-            <% else %>
-              <div id="embed-highlight-controls" class="mb-4 flex flex-wrap items-center gap-2">
-                <button
-                  id="embed-highlight-mode-toggle"
-                  type="button"
-                  data-highlight-overlay-toggle
-                  disabled={!@authenticated}
-                  class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
-                >
-                  <.icon name="hero-pencil-square" class="h-4 w-4" /> Highlight Select Mode
-                </button>
-                <button
-                  id="embed-highlight-clear"
-                  type="button"
-                  data-highlight-overlay-clear
-                  disabled={!@authenticated}
-                  class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
-                >
-                  <.icon name="hero-trash" class="h-4 w-4" /> Clear Selection
-                </button>
-                <span
-                  id="embed-highlight-count"
-                  class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
-                >
-                  0 selected
-                </span>
-              </div>
-
-              <div
-                id="room-embed-stage"
-                class="relative isolate overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/60 p-2"
-              >
-                <div id="room-embed-center-rail" class="flex min-w-full justify-center">
-                  <div id="room-embed-content" class="relative w-[760px] min-w-[760px] max-w-[760px]">
-                    <%= if embed_provider(@post) == :x do %>
-                      <div
-                        id="tweet-embed"
-                        phx-hook="XEmbed"
-                        phx-update="ignore"
-                        data-tweet-url={@post.tweet_url}
-                        class="min-h-24 rounded-xl border border-slate-200 bg-white p-2"
-                      >
-                        <blockquote class="twitter-tweet">
-                          <a href={@post.tweet_url}>X Post</a>
-                        </blockquote>
-                      </div>
-                    <% else %>
-                      <%= if embed_provider(@post) == :youtube do %>
-                        <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                          <iframe
-                            id="youtube-embed"
-                            src={youtube_embed_url(@post)}
-                            class="w-full"
-                            style="aspect-ratio: 16 / 9;"
-                            width="1280"
-                            height="720"
-                            title={display_title(@post)}
-                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                            referrerpolicy="strict-origin-when-cross-origin"
-                            loading="lazy"
-                            allowfullscreen
-                          >
-                          </iframe>
-                        </div>
-                      <% else %>
-                        <div
-                          id="link-preview-card"
-                          class="overflow-hidden rounded-xl border border-slate-200 bg-white"
-                        >
-                          <a
-                            id="preview-card-source"
-                            href={@post.tweet_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="block transition hover:bg-slate-50"
-                          >
-                            <div class="aspect-[16/9] w-full bg-zinc-100">
-                              <img
-                                :if={preview_image_url(@post)}
-                                id="preview-card-image"
-                                src={preview_image_url(@post)}
-                                alt={display_title(@post)}
-                                class="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                              <div
-                                :if={!preview_image_url(@post)}
-                                class="flex h-full items-center justify-center text-xs text-zinc-500"
-                              >
-                                No image
-                              </div>
-                            </div>
-                            <div class="space-y-1.5 p-3">
-                              <p class="truncate text-sm font-bold text-slate-900">
-                                {display_title(@post)}
-                              </p>
-                              <p class="text-xs leading-relaxed text-slate-600">
-                                {preview_description(@post)}
-                              </p>
-                              <p class="truncate text-[11px] text-slate-500">{@post.tweet_url}</p>
-                            </div>
-                          </a>
-                        </div>
-                      <% end %>
-                    <% end %>
-
-                    <div
-                      id="embed-highlight-comment-panel"
-                      class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-slate-300 bg-white/97 p-3 shadow-xl backdrop-blur-sm"
-                    >
-                      <div
-                        id="embed-highlight-comment-pointer"
-                        class="absolute h-3 w-3 rotate-45 border border-slate-300 bg-white"
-                      >
-                      </div>
-
-                      <div class="flex items-center justify-between gap-2">
-                        <p
-                          id="embed-highlight-comment-meta"
-                          class="text-xs font-semibold text-slate-700"
-                        >
-                          Highlight
-                        </p>
-                        <button
-                          id="embed-highlight-comment-close"
-                          type="button"
-                          class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
-                        >
-                          <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> Close
-                        </button>
-                      </div>
-
-                      <p
-                        id="embed-highlight-comment-readonly"
-                        class="text-sm leading-relaxed text-slate-800"
-                      >
-                        No comments yet.
-                      </p>
-
-                      <div id="embed-highlight-comment-editor" class="hidden space-y-2">
-                        <label
-                          for="embed-highlight-comment-input"
-                          class="text-xs font-medium text-slate-600"
-                        >
-                          Comment on this highlight
-                        </label>
-                        <textarea
-                          id="embed-highlight-comment-input"
-                          rows="3"
-                          maxlength="240"
-                          class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-400"
-                          placeholder="Share what this highlight means"
-                        ></textarea>
-                        <div class="flex items-center justify-end gap-2">
-                          <button
-                            id="embed-highlight-comment-save"
-                            type="button"
-                            class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
-                          >
-                            <.icon name="hero-check" class="h-3.5 w-3.5" /> Save Comment
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div
-                      id="room-embed-highlight-overlay"
-                      phx-hook="EmbedHighlightOverlay"
-                      phx-update="ignore"
-                      data-readonly={!@authenticated}
-                      data-stage-selector="#room-embed-content"
-                      data-toggle-selector="#embed-highlight-mode-toggle"
-                      data-clear-selector="#embed-highlight-clear"
-                      data-count-selector="#embed-highlight-count"
-                      data-comment-panel-selector="#embed-highlight-comment-panel"
-                      data-comment-meta-selector="#embed-highlight-comment-meta"
-                      data-comment-readonly-selector="#embed-highlight-comment-readonly"
-                      data-comment-editor-selector="#embed-highlight-comment-editor"
-                      data-comment-input-selector="#embed-highlight-comment-input"
-                      data-comment-save-selector="#embed-highlight-comment-save"
-                      data-comment-close-selector="#embed-highlight-comment-close"
-                      data-comment-pointer-selector="#embed-highlight-comment-pointer"
-                      data-session-id={@session_id}
-                      data-user-color={@color}
-                      class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
-                    >
-                    </div>
-                  </div>
+            <div id="room-content-layout" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+              <div id="room-main-column" class="min-w-0 space-y-4">
+                <div :if={!@authenticated} id="room-login-required" class="text-sm text-slate-600">
+                  Guests can view only.
+                  <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">
+                    Log in
+                  </.link>
+                  to use reactions/highlights/comments.
                 </div>
 
-                <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-slate-500">
-                  If the embed does not load, use the original link above.
-                </p>
+                <%= if @post.hidden do %>
+                  <div
+                    id="takedown-state"
+                    class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800"
+                  >
+                    Content is unavailable.
+                  </div>
+                <% else %>
+                  <div
+                    id="room-embed-layout"
+                    class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start"
+                  >
+                    <aside
+                      id="room-presence-panel"
+                      class="mat-panel w-full p-3 lg:sticky lg:top-[6.4rem] lg:w-52 lg:self-start"
+                    >
+                      <p
+                        id="room-presence-count"
+                        aria-live="polite"
+                        class="text-sm font-semibold text-slate-800"
+                      >
+                        Active {participant_count(@presence_members)}
+                      </p>
+                      <div id="room-presence-list" class="mt-2 flex flex-col items-stretch gap-1.5">
+                        <span
+                          :for={{session_id, presence} <- @presence_members}
+                          id={"room-presence-user-#{session_id}"}
+                          class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
+                        >
+                          <span
+                            class="h-2.5 w-2.5 rounded-full"
+                            style={"background-color: #{presence_color(presence)}"}
+                          >
+                          </span>
+                          {presence_label(presence, session_id, @session_id)}
+                        </span>
+                      </div>
+                    </aside>
+
+                    <div
+                      id="room-embed-stage"
+                      class="relative isolate overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-2 lg:flex-1"
+                    >
+                      <div id="room-embed-center-rail" class="flex min-w-full justify-center">
+                        <div
+                          id="room-embed-content"
+                          class="relative w-full max-w-[760px]"
+                        >
+                          <%= if embed_provider(@post) == :x do %>
+                            <div
+                              id="tweet-embed"
+                              phx-hook="XEmbed"
+                              phx-update="ignore"
+                              data-tweet-url={@post.tweet_url}
+                              class="min-h-24 rounded-xl border border-slate-200 bg-white p-2"
+                            >
+                              <blockquote class="twitter-tweet">
+                                <a href={@post.tweet_url}>X Post</a>
+                              </blockquote>
+                            </div>
+                          <% else %>
+                            <%= if embed_provider(@post) == :youtube do %>
+                              <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                <iframe
+                                  id="youtube-embed"
+                                  src={youtube_embed_url(@post)}
+                                  class="w-full"
+                                  style="aspect-ratio: 16 / 9;"
+                                  width="1280"
+                                  height="720"
+                                  title={display_title(@post)}
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                  referrerpolicy="strict-origin-when-cross-origin"
+                                  loading="lazy"
+                                  allowfullscreen
+                                >
+                                </iframe>
+                              </div>
+                            <% else %>
+                              <div
+                                id="link-preview-card"
+                                class="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                              >
+                                <a
+                                  id="preview-card-source"
+                                  href={@post.tweet_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="block transition hover:bg-slate-50"
+                                >
+                                  <div class="aspect-[16/9] w-full bg-zinc-100">
+                                    <img
+                                      :if={preview_image_url(@post)}
+                                      id="preview-card-image"
+                                      src={preview_image_url(@post)}
+                                      alt={display_title(@post)}
+                                      class="h-full w-full object-cover"
+                                      loading="lazy"
+                                    />
+                                    <div
+                                      :if={!preview_image_url(@post)}
+                                      class="flex h-full items-center justify-center text-xs text-zinc-500"
+                                    >
+                                      No image
+                                    </div>
+                                  </div>
+                                  <div class="space-y-1.5 p-3">
+                                    <p class="truncate text-sm font-bold text-slate-900">
+                                      {display_title(@post)}
+                                    </p>
+                                    <p class="text-xs leading-relaxed text-slate-600">
+                                      {preview_description(@post)}
+                                    </p>
+                                    <p class="truncate text-[11px] text-slate-500">
+                                      {@post.tweet_url}
+                                    </p>
+                                  </div>
+                                </a>
+                              </div>
+                            <% end %>
+                          <% end %>
+
+                          <div
+                            id="embed-highlight-comment-panel"
+                            class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-slate-300 bg-white/97 p-3 shadow-xl backdrop-blur-sm"
+                          >
+                            <div
+                              id="embed-highlight-comment-pointer"
+                              class="absolute h-3 w-3 rotate-45 border border-slate-300 bg-white"
+                            >
+                            </div>
+
+                            <div class="flex items-center justify-between gap-2">
+                              <p
+                                id="embed-highlight-comment-meta"
+                                class="text-xs font-semibold text-slate-700"
+                              >
+                                Highlight
+                              </p>
+                              <button
+                                id="embed-highlight-comment-close"
+                                type="button"
+                                class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
+                              >
+                                <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> Close
+                              </button>
+                            </div>
+
+                            <p
+                              id="embed-highlight-comment-readonly"
+                              class="text-sm leading-relaxed text-slate-800"
+                            >
+                              No comments yet.
+                            </p>
+
+                            <div id="embed-highlight-comment-editor" class="hidden space-y-2">
+                              <label
+                                for="embed-highlight-comment-input"
+                                class="text-xs font-medium text-slate-600"
+                              >
+                                Comment on this highlight
+                              </label>
+                              <textarea
+                                id="embed-highlight-comment-input"
+                                rows="3"
+                                maxlength="240"
+                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-400"
+                                placeholder="Share what this highlight means"
+                              ></textarea>
+                              <div class="flex items-center justify-end gap-2">
+                                <button
+                                  id="embed-highlight-comment-save"
+                                  type="button"
+                                  class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                                >
+                                  <.icon name="hero-check" class="h-3.5 w-3.5" /> Save Comment
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div
+                            id="room-embed-highlight-overlay"
+                            phx-hook="EmbedHighlightOverlay"
+                            phx-update="ignore"
+                            data-readonly={!@authenticated}
+                            data-stage-selector="#room-embed-content"
+                            data-toggle-selector="#embed-highlight-mode-toggle"
+                            data-clear-selector="#embed-highlight-clear"
+                            data-count-selector="#embed-highlight-count"
+                            data-comment-panel-selector="#embed-highlight-comment-panel"
+                            data-comment-meta-selector="#embed-highlight-comment-meta"
+                            data-comment-readonly-selector="#embed-highlight-comment-readonly"
+                            data-comment-editor-selector="#embed-highlight-comment-editor"
+                            data-comment-input-selector="#embed-highlight-comment-input"
+                            data-comment-save-selector="#embed-highlight-comment-save"
+                            data-comment-close-selector="#embed-highlight-comment-close"
+                            data-comment-pointer-selector="#embed-highlight-comment-pointer"
+                            data-session-id={@session_id}
+                            data-user-color={@color}
+                            class="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
+                          >
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-slate-500">
+                    If the embed does not load, use the original link above.
+                  </p>
+                <% end %>
               </div>
-            <% end %>
+
+              <aside id="room-side-column" class="space-y-3 lg:sticky lg:top-[5.6rem] lg:self-start">
+                <div
+                  id="room-reactions"
+                  class="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch"
+                >
+                  <button
+                    id="like-button"
+                    type="button"
+                    phx-click="toggle_reaction"
+                    phx-value-kind="like"
+                    disabled={!@authenticated}
+                    class={[
+                      "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition lg:w-full lg:justify-between",
+                      if(@liked,
+                        do: "border-emerald-400 bg-emerald-50 text-emerald-700",
+                        else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                      ),
+                      !@authenticated && "cursor-not-allowed opacity-50"
+                    ]}
+                  >
+                    <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> Like
+                    <span id="like-count">{@like_count}</span>
+                  </button>
+
+                  <button
+                    id="dislike-button"
+                    type="button"
+                    phx-click="toggle_reaction"
+                    phx-value-kind="dislike"
+                    disabled={!@authenticated}
+                    class={[
+                      "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition lg:w-full lg:justify-between",
+                      if(@disliked,
+                        do: "border-rose-400 bg-rose-50 text-rose-700",
+                        else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                      ),
+                      !@authenticated && "cursor-not-allowed opacity-50"
+                    ]}
+                  >
+                    <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> Dislike
+                    <span id="dislike-count">{@dislike_count}</span>
+                  </button>
+
+                  <span
+                    id="room-view-count"
+                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 lg:w-full lg:justify-between"
+                  >
+                    Views {@view_count}
+                  </span>
+                </div>
+
+                <div
+                  :if={!@post.hidden}
+                  id="embed-highlight-controls"
+                  class="flex w-full flex-wrap items-center justify-start gap-2 lg:flex-col lg:items-stretch"
+                >
+                  <button
+                    id="embed-highlight-mode-toggle"
+                    type="button"
+                    data-highlight-overlay-toggle
+                    disabled={!@authenticated}
+                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 lg:w-full"
+                  >
+                    <.icon name="hero-pencil-square" class="h-4 w-4" /> Highlight Select Mode
+                  </button>
+                  <button
+                    id="embed-highlight-clear"
+                    type="button"
+                    data-highlight-overlay-clear
+                    disabled={!@authenticated}
+                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 lg:w-full"
+                  >
+                    <.icon name="hero-trash" class="h-4 w-4" /> Clear Selection
+                  </button>
+                  <span
+                    id="embed-highlight-count"
+                    class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 lg:w-full lg:justify-between"
+                  >
+                    0 selected
+                  </span>
+                </div>
+              </aside>
+            </div>
 
             <div
               id="room-remote-cursors"

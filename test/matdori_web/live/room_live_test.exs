@@ -6,7 +6,7 @@ defmodule MatdoriWeb.RoomLiveTest do
   alias Matdori.Collab
   alias MatdoriWeb.Presence
 
-  test "room page uses room topbar with back icon and refreshable title", %{conn: conn} do
+  test "room page hides room topbar controls and keeps room title in content", %{conn: conn} do
     conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))
 
@@ -18,11 +18,9 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
 
-    assert has_element?(view, "#room-topbar-back")
-    assert has_element?(view, "#room-topbar-title", "상단바 방")
+    refute has_element?(view, "#room-topbar-back")
+    refute has_element?(view, "#room-topbar-title")
     refute has_element?(view, "#back-to-room-list")
-
-    _html = view |> element("#room-topbar-title") |> render_click()
 
     assert has_element?(view, "#room-title", "상단바 방")
   end

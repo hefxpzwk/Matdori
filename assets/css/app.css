@@ -1835,6 +1835,21 @@ a {
   color: #ffffff;
 }
 
+.x-top-create-btn:hover,
+#share-room-start-create:hover,
+#share-room-submit:hover {
+  transform: none;
+  filter: none;
+}
+
+#share-room-start-create:hover,
+#share-room-submit:hover {
+  border-color: rgb(255 255 255 / 16%);
+  background: var(--x-accent-gradient);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgb(0 0 0 / 38%);
+}
+
 .x-top-login {
   border: 1px solid #ffffff;
   background: #ffffff;
@@ -2364,6 +2379,29 @@ a {
 #room-detail #embed-highlight-comment-input {
   border: 0 !important;
   border-radius: 0 !important;
+}
+
+#room-detail #like-button:not(:disabled):hover,
+#room-detail #dislike-button:not(:disabled):hover,
+#room-detail #embed-highlight-mode-toggle:not(:disabled):hover,
+#room-detail #embed-highlight-clear:not(:disabled):hover,
+#room-detail #embed-highlight-comment-close:not(:disabled):hover,
+#room-detail #embed-highlight-comment-save:not(:disabled):hover {
+  background: rgb(255 255 255 / 12%) !important;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%) !important;
+  color: #ffffff !important;
+}
+
+#room-detail #like-button:not(:disabled):hover,
+#room-detail #embed-highlight-mode-toggle:not(:disabled):hover,
+#room-detail #embed-highlight-clear:not(:disabled):hover,
+#room-detail #embed-highlight-comment-save:not(:disabled):hover {
+  border-color: rgb(45 212 191 / 56%) !important;
+}
+
+#room-detail #dislike-button:not(:disabled):hover,
+#room-detail #embed-highlight-comment-close:not(:disabled):hover {
+  border-color: rgb(251 113 133 / 56%) !important;
 }
 
 @media (min-width: 641px) and (max-width: 1023px) {
