@@ -6,7 +6,7 @@ defmodule MatdoriWeb.AuthControllerTest do
     conn = get(conn, ~p"/auth/logout")
 
     assert redirected_to(conn) == ~p"/login"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "로그아웃되었습니다."
+    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "You have been logged out."
     assert get_session(conn, :google_uid) == nil
   end
 end

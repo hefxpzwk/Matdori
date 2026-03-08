@@ -3,7 +3,7 @@ defmodule Matdori.XTimeline do
 
   @api_base "https://api.x.com/2"
   @default_max_results 20
-  @placeholder_snapshot_text "텍스트 본문이 없는 게시물입니다."
+  @placeholder_snapshot_text "This post has no text content."
 
   def fetch_recent_posts(opts \\ []) do
     with {:ok, %{posts: posts}} <- fetch_recent_posts_page(opts) do

@@ -1153,12 +1153,12 @@ defmodule Matdori.Collab do
     snapshot_text
     |> TextAnchors.normalize()
     |> case do
-      "" -> "텍스트 본문이 없는 게시물입니다."
+      "" -> "This post has no text content."
       normalized -> normalized
     end
   end
 
-  defp normalize_snapshot_text(_), do: "텍스트 본문이 없는 게시물입니다."
+  defp normalize_snapshot_text(_), do: "This post has no text content."
 
   defp normalize_share_title(title) when is_binary(title) do
     case String.trim(title) do

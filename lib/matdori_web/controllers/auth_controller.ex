@@ -18,7 +18,7 @@ defmodule MatdoriWeb.AuthController do
       conn
     else
       conn
-      |> put_flash(:error, "지원하지 않는 로그인 방식입니다.")
+      |> put_flash(:error, "Unsupported login method.")
       |> redirect(to: ~p"/login")
     end
   end
@@ -42,7 +42,7 @@ defmodule MatdoriWeb.AuthController do
 
   def callback(%{assigns: %{ueberauth_failure: _failure}} = conn, _params) do
     conn
-    |> put_flash(:error, "Google 로그인에 실패했습니다. 다시 시도해 주세요.")
+    |> put_flash(:error, "Google sign-in failed. Please try again.")
     |> redirect(to: ~p"/login")
   end
 
@@ -50,7 +50,7 @@ defmodule MatdoriWeb.AuthController do
     conn
     |> configure_session(renew: true)
     |> clear_session()
-    |> put_flash(:info, "로그아웃되었습니다.")
+    |> put_flash(:info, "You have been logged out.")
     |> redirect(to: ~p"/login")
   end
 

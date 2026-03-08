@@ -40,8 +40,8 @@ defmodule Matdori.Embed do
     end
   end
 
-  def status_label(%{mode: :native_embed}), do: "임베드 가능"
-  def status_label(_), do: "미리보기"
+  def status_label(%{mode: :native_embed}), do: "Embeddable"
+  def status_label(_), do: "Preview"
 
   def youtube_video_embed_url(video_id), do: "https://www.youtube.com/embed/#{video_id}?rel=0"
 

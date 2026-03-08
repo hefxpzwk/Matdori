@@ -51,84 +51,85 @@ defmodule MatdoriWeb.Layouts do
 
     ~H"""
     <div class="mat-shell min-h-screen" style={"--mat-accent: #{@accent_color};"}>
-      <section class="mx-auto h-full w-full max-w-[1320px] px-3 sm:px-4">
+      <section class="mx-auto h-full w-full max-w-[1440px] px-4 sm:px-7 lg:px-12">
         <div class="x-home-grid x-home-grid--wide">
-          <aside id="x-left-rail" class="x-left-rail">
-            <a href="/" class="x-rail-logo">
-              <img src={~p"/images/logo.svg"} width="22" />
-            </a>
-
-            <div class="x-rail-main">
-              <nav class="x-rail-nav" aria-label="Main">
-                <a href={~p"/"} class="x-rail-nav-item">
-                  <.icon name="hero-home-solid" class="size-5" /> 홈
-                </a>
-                <a href={~p"/rooms"} class="x-rail-nav-item">
-                  <.icon name="hero-magnifying-glass" class="size-5" /> 탐색하기
-                </a>
-                <a href={~p"/rooms"} class="x-rail-nav-item">
-                  <.icon name="hero-bell" class="size-5" /> 알림
-                </a>
-                <a :if={@authenticated and @display_name} href={~p"/me"} class="x-rail-nav-item">
-                  <.icon name="hero-user" class="size-5" /> 프로필
-                </a>
-              </nav>
-
-              <.link id="left-create-room" navigate={~p"/"} class="x-rail-post-btn">
-                방 만들기
-              </.link>
-            </div>
-
-            <div :if={@authenticated and @display_name} class="x-rail-bottom">
-              <button
-                id="left-profile-trigger"
-                type="button"
-                class="x-profile-trigger"
-                phx-click={JS.toggle(to: "#left-profile-menu")}
-              >
-                <span class="x-profile-avatar">
-                  <img
-                    :if={@avatar_url}
-                    src={@avatar_url}
-                    alt="profile"
-                    class="x-profile-avatar-image"
-                  />
-                  <.icon :if={!@avatar_url} name="hero-user" class="size-4" />
-                </span>
-                <span class="x-profile-meta">
-                  <span id="header-display-name" class="x-profile-name">{@display_name}</span>
-                  <span :if={@email} class="x-profile-email">{@email}</span>
-                </span>
-                <.icon name="hero-chevron-up-down" class="size-4 text-slate-500" />
-              </button>
-
-              <div
-                id="left-profile-menu"
-                class="x-profile-menu hidden"
-                phx-click-away={JS.hide(to: "#left-profile-menu")}
-              >
-                <.link navigate={~p"/me"} class="x-profile-menu-item">
-                  <.icon name="hero-cog-6-tooth" class="size-4" /> 설정
-                </.link>
-                <a href={~p"/auth/logout"} class="x-profile-menu-item danger">
-                  <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> 로그아웃
-                </a>
-              </div>
-            </div>
-
-            <a
-              :if={!(@authenticated and @display_name)}
-              href={~p"/login"}
-              class="mat-btn-primary x-rail-login"
-            >
-              로그인
-            </a>
-          </aside>
-
           <main id="x-main-column" class="x-main-column">
-            <header :if={@topbar_mode == :default} class="x-main-topbar">
-              <a href={~p"/"} class="x-main-tab">추천</a>
-              <a href={~p"/rooms"} class="x-main-tab">검색</a>
+            <header id="x-global-header" class="x-global-header">
+              <div class="x-global-head-inner">
+                <a href={~p"/"} class="x-global-logo-link">
+                  <span class="x-global-logo-text">MATDORI</span>
+                </a>
+
+                <nav class="x-top-nav" aria-label="Main">
+                  <a href={~p"/"} class="x-top-nav-item">
+                    <.icon name="hero-home-solid" class="size-8 x-top-nav-icon" />
+                    <span class="x-top-nav-text">Home</span>
+                  </a>
+                  <a href={~p"/rooms"} class="x-top-nav-item">
+                    <.icon name="hero-magnifying-glass" class="size-8 x-top-nav-icon" />
+                    <span class="x-top-nav-text">Explore</span>
+                  </a>
+                  <a href={~p"/rooms"} class="x-top-nav-item">
+                    <.icon name="hero-fire" class="size-8 x-top-nav-icon" />
+                    <span class="x-top-nav-text">Trending</span>
+                  </a>
+                  <a :if={@authenticated and @display_name} href={~p"/me"} class="x-top-nav-item">
+                    <.icon name="hero-user" class="size-8 x-top-nav-icon" />
+                    <span class="x-top-nav-text">Profile</span>
+                  </a>
+                </nav>
+
+                <div class="x-top-actions">
+                  <.link id="header-create-room" navigate={~p"/"} class="x-top-create-btn">
+                    <.icon name="hero-plus" class="size-4" /> Create Room
+                  </.link>
+
+                  <div :if={@authenticated and @display_name} class="x-top-profile-wrap">
+                    <button
+                      id="header-profile-trigger"
+                      type="button"
+                      class="x-top-profile-trigger"
+                      phx-click={JS.toggle(to: "#header-profile-menu")}
+                    >
+                      <span class="x-profile-avatar">
+                        <img
+                          :if={@avatar_url}
+                          src={@avatar_url}
+                          alt="profile"
+                          class="x-profile-avatar-image"
+                        />
+                        <.icon :if={!@avatar_url} name="hero-user" class="size-4" />
+                      </span>
+                      <span class="x-profile-meta">
+                        <span id="header-display-name" class="x-profile-name">{@display_name}</span>
+                        <span :if={@email} class="x-profile-email">{@email}</span>
+                      </span>
+                      <.icon name="hero-chevron-down" class="size-4 text-slate-200" />
+                    </button>
+
+                    <div
+                      id="header-profile-menu"
+                      class="x-profile-menu hidden"
+                      phx-click-away={JS.hide(to: "#header-profile-menu")}
+                    >
+                      <.link navigate={~p"/me"} class="x-profile-menu-item">
+                        <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
+                      </.link>
+                      <a href={~p"/auth/logout"} class="x-profile-menu-item danger">
+                        <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> Log out
+                      </a>
+                    </div>
+                  </div>
+
+                  <a
+                    :if={!(@authenticated and @display_name)}
+                    href={~p"/login"}
+                    class="mat-btn-secondary x-top-login"
+                  >
+                    Log in
+                  </a>
+                </div>
+              </div>
             </header>
 
             <header :if={@topbar_mode == :room} class="x-main-topbar x-main-topbar--room">
@@ -165,7 +166,7 @@ defmodule MatdoriWeb.Layouts do
                 class="x-profile-topbar-title"
                 phx-click={@topbar_refresh_event}
               >
-                프로필
+                Profile
               </button>
             </header>
 
@@ -258,7 +259,7 @@ defmodule MatdoriWeb.Layouts do
   defp topbar_mode(_), do: :default
 
   defp topbar_title(%{title: title}) when is_binary(title) and title != "", do: title
-  defp topbar_title(_), do: "방"
+  defp topbar_title(_), do: "Room"
 
   defp topbar_refresh_event(%{refresh_event: event}) when is_binary(event) and event != "",
     do: event

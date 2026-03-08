@@ -3,6 +3,7 @@ defmodule MatdoriWeb.RoomIndexLive do
 
   alias Matdori.Collab
   alias Matdori.Embed
+  alias MatdoriWeb.Presence
 
   @embed_filters ~w(all embedded preview)
   @sort_options ~w(latest likes views)
@@ -14,6 +15,7 @@ defmodule MatdoriWeb.RoomIndexLive do
     {:ok,
      socket
      |> assign(:posts, [])
+     |> assign(:active_counts, %{})
      |> assign(:display_name, session["display_name"])
      |> assign(:color, session["color"])
      |> assign(:email, session["google_email"])
@@ -36,7 +38,8 @@ defmodule MatdoriWeb.RoomIndexLive do
      socket
      |> assign(:embed_filter, embed_filter)
      |> assign(:sort, sort)
-     |> assign(:posts, posts)}
+     |> assign(:posts, posts)
+     |> assign(:active_counts, active_counts_map(posts))}
   end
 
   @impl true
@@ -60,7 +63,7 @@ defmodule MatdoriWeb.RoomIndexLive do
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Community Rooms
             </p>
-            <h1 class="mt-1 text-2xl font-black tracking-tight text-slate-900">만들어진 방 목록</h1>
+            <h1 class="mt-1 text-2xl font-black tracking-tight text-slate-900">Created Rooms</h1>
           </div>
 
           <%= if @authenticated do %>
@@ -69,7 +72,7 @@ defmodule MatdoriWeb.RoomIndexLive do
               navigate={~p"/"}
               class="mat-btn-primary"
             >
-              새 방 만들기
+              Create New Room
             </.link>
           <% else %>
             <.link
@@ -77,7 +80,7 @@ defmodule MatdoriWeb.RoomIndexLive do
               navigate={~p"/login"}
               class="mat-btn-secondary"
             >
-              로그인
+              Log in
             </.link>
           <% end %>
         </div>
@@ -87,55 +90,55 @@ defmodule MatdoriWeb.RoomIndexLive do
           class="mat-panel grid gap-4 p-4 sm:grid-cols-2"
         >
           <div id="room-items" class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">임베드 필터</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Embed Filter</p>
             <div class="flex flex-wrap gap-2">
               <.link
                 id="room-filter-all"
                 patch={room_list_path("all", @sort)}
                 class={control_link_class(@embed_filter == "all")}
               >
-                전체
+                All
               </.link>
               <.link
                 id="room-filter-embedded"
                 patch={room_list_path("embedded", @sort)}
                 class={control_link_class(@embed_filter == "embedded")}
               >
-                임베드 가능
+                Embeddable
               </.link>
               <.link
                 id="room-filter-preview"
                 patch={room_list_path("preview", @sort)}
                 class={control_link_class(@embed_filter == "preview")}
               >
-                미리보기만
+                Preview Only
               </.link>
             </div>
           </div>
 
           <div class="space-y-2">
-            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">정렬</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Sort</p>
             <div class="flex flex-wrap gap-2">
               <.link
                 id="room-sort-latest"
                 patch={room_list_path(@embed_filter, "latest")}
                 class={control_link_class(@sort == "latest")}
               >
-                최신순
+                Latest
               </.link>
               <.link
                 id="room-sort-likes"
                 patch={room_list_path(@embed_filter, "likes")}
                 class={control_link_class(@sort == "likes")}
               >
-                좋아요순
+                Most Liked
               </.link>
               <.link
                 id="room-sort-views"
                 patch={room_list_path(@embed_filter, "views")}
                 class={control_link_class(@sort == "views")}
               >
-                조회순
+                Most Viewed
               </.link>
             </div>
           </div>
@@ -146,30 +149,71 @@ defmodule MatdoriWeb.RoomIndexLive do
             id="room-list-empty"
             class="mat-panel p-5 text-sm text-slate-600"
           >
-            아직 만들어진 방이 없습니다. 메인 페이지에서 첫 방을 만들어 보세요.
+            No rooms yet. Create the first one from the home page.
           </div>
         <% else %>
-          <div class="space-y-3">
+          <div id="room-media-grid" class="x-media-grid" phx-hook="MasonryGrid">
             <%= for post <- @posts do %>
               <.link
                 id={"room-item-#{post.id}"}
                 navigate={~p"/rooms/#{post.id}"}
-                class="mat-card group block p-4"
+                class={media_card_class(post)}
               >
-                <div class="flex items-center gap-2.5">
-                  <p class="truncate text-sm font-bold text-slate-900">{display_title(post)}</p>
+                <div class={media_frame_class(post)}>
+                  <%= cond do %>
+                    <% embed_provider(post) == :x -> %>
+                      <div
+                        id={"room-feed-x-embed-#{post.id}"}
+                        class="x-media-x-embed"
+                        phx-hook="XEmbed"
+                        phx-update="ignore"
+                        data-tweet-url={post.tweet_url}
+                      >
+                      </div>
+                    <% embed_provider(post) == :youtube and youtube_embed_url(post) -> %>
+                      <iframe
+                        id={"room-feed-youtube-#{post.id}"}
+                        src={youtube_embed_url(post)}
+                        title={display_title(post)}
+                        class="x-media-youtube"
+                        loading="lazy"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                      >
+                      </iframe>
+                    <% preview_image_url(post) -> %>
+                      <img
+                        src={preview_image_url(post)}
+                        alt={display_title(post)}
+                        class="x-media-thumb"
+                        loading="lazy"
+                      />
+                    <% true -> %>
+                      <div class="x-media-fallback">
+                        <p class="x-media-fallback-title">{display_title(post)}</p>
+                        <p class="x-media-fallback-url">{fallback_preview_text(post)}</p>
+                      </div>
+                  <% end %>
+
                   <span
                     id={"room-status-#{post.id}"}
-                    class="mat-pill px-2.5 py-1 text-[11px]"
+                    class="x-media-status"
                   >
                     {embed_status_label(post)}
                   </span>
-                </div>
-                <p class="mt-1.5 truncate text-xs text-slate-500">{post.tweet_url}</p>
-                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                  <span id={"room-like-count-#{post.id}"}>좋아요 {post.like_count}</span>
-                  <span id={"room-dislike-count-#{post.id}"}>싫어요 {post.dislike_count}</span>
-                  <span id={"room-view-count-#{post.id}"}>조회수 {post.view_count}</span>
+
+                  <div class="x-media-overlay">
+                    <p class="x-media-title">{display_title(post)}</p>
+                    <div class="x-media-metrics">
+                      <span id={"room-like-count-#{post.id}"}>Likes {post.like_count}</span>
+                      <span id={"room-dislike-count-#{post.id}"}>Dislikes {post.dislike_count}</span>
+                      <span id={"room-view-count-#{post.id}"}>Views {post.view_count}</span>
+                      <span id={"room-active-count-#{post.id}"}>
+                        Active {Map.get(@active_counts, post.id, 0)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </.link>
             <% end %>
@@ -182,7 +226,7 @@ defmodule MatdoriWeb.RoomIndexLive do
 
   defp display_title(post) do
     case String.trim(post.title || "") do
-      "" -> "제목 없는 공유"
+      "" -> "Untitled Share"
       title -> title
     end
   end
@@ -218,6 +262,65 @@ defmodule MatdoriWeb.RoomIndexLive do
   end
 
   defp embed_status_label(post), do: post.tweet_url |> Embed.classify() |> Embed.status_label()
+  defp embed_provider(post), do: post.tweet_url |> Embed.classify() |> Map.get(:provider)
+  defp youtube_embed_url(post), do: post.tweet_url |> Embed.classify() |> Map.get(:embed_url)
+
+  defp media_card_class(post) do
+    [
+      "x-media-card group",
+      "x-media-card--#{media_type(post)}"
+    ]
+  end
+
+  defp media_frame_class(post) do
+    [
+      "x-media-frame",
+      "x-media-frame--#{media_type(post)}"
+    ]
+  end
+
+  defp media_type(post) do
+    cond do
+      embed_provider(post) == :x -> "x"
+      embed_provider(post) == :youtube and youtube_embed_url(post) -> "youtube"
+      preview_image_url(post) -> "image"
+      true -> "fallback"
+    end
+  end
+
+  defp preview_image_url(post) do
+    case String.trim(post.preview_image_url || "") do
+      "" -> nil
+      url -> url
+    end
+  end
+
+  defp fallback_preview_text(post) do
+    post.preview_description ||
+      post.preview_title ||
+      snapshot_preview_text(post.current_snapshot) ||
+      post.tweet_url
+  end
+
+  defp snapshot_preview_text(%Ecto.Association.NotLoaded{}), do: nil
+  defp snapshot_preview_text(nil), do: nil
+  defp snapshot_preview_text(snapshot), do: snapshot.normalized_text
+
+  defp active_counts_map(posts) do
+    posts
+    |> Enum.map(fn post ->
+      count =
+        post.id
+        |> presence_topic()
+        |> Presence.list()
+        |> map_size()
+
+      {post.id, count}
+    end)
+    |> Map.new()
+  end
+
+  defp presence_topic(post_id), do: "presence:#{post_id}"
 
   defp logged_in?(session) when is_map(session) do
     case session["google_uid"] do

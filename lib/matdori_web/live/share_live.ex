@@ -2,6 +2,7 @@ defmodule MatdoriWeb.ShareLive do
   use MatdoriWeb, :live_view
 
   alias Matdori.Collab
+  alias Matdori.Embed
   alias Matdori.RateLimiter
   alias MatdoriWeb.Presence
 
@@ -55,7 +56,7 @@ defmodule MatdoriWeb.ShareLive do
          |> assign(:share_form, share_form(params))
          |> assign(:composer_mode, :search)
          |> assign(:search_status, :idle)
-         |> put_flash(:error, "링크를 입력해 주세요")}
+         |> put_flash(:error, "Please enter a link.")}
 
       true ->
         case Collab.find_post_by_url(tweet_url) do
@@ -73,7 +74,7 @@ defmodule MatdoriWeb.ShareLive do
              |> assign(:share_form, share_form(params))
              |> assign(:composer_mode, :search)
              |> assign(:search_status, :not_found)
-             |> put_flash(:info, "기존 방이 없어 새 방을 만들 수 있습니다")}
+             |> put_flash(:info, "No existing room found. You can create a new one.")}
 
           {:error, :invalid_tweet_url} ->
             {:noreply,
@@ -81,7 +82,7 @@ defmodule MatdoriWeb.ShareLive do
              |> assign(:share_form, share_form(params))
              |> assign(:composer_mode, :search)
              |> assign(:search_status, :idle)
-             |> put_flash(:error, "유효한 링크를 입력해 주세요")}
+             |> put_flash(:error, "Please enter a valid link.")}
         end
     end
   end
@@ -96,7 +97,7 @@ defmodule MatdoriWeb.ShareLive do
        |> assign(:share_form, share_form(params))
        |> assign(:composer_mode, :search)
        |> assign(:search_status, :idle)
-       |> put_flash(:error, "링크를 입력해 주세요")}
+       |> put_flash(:error, "Please enter a link.")}
     else
       {:noreply,
        socket
@@ -118,35 +119,35 @@ defmodule MatdoriWeb.ShareLive do
       {:noreply,
        socket
        |> assign(:share_form, empty_share_form())
-       |> put_flash(:info, "새 방이 생성되었습니다")
+       |> put_flash(:info, "A new room has been created.")
        |> push_navigate(to: ~p"/rooms/#{post.id}")}
     else
       false ->
         {:noreply,
          socket
-         |> put_flash(:error, "로그인한 사용자만 방을 만들 수 있습니다.")
+         |> put_flash(:error, "Only signed-in users can create rooms.")
          |> push_navigate(to: ~p"/login")}
 
       {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")}
+        {:noreply, put_flash(socket, :error, "Too many requests. Please try again shortly.")}
 
       {:error, :invalid_title} ->
         {:noreply,
          socket
          |> assign(:share_form, share_form(share_params))
-         |> put_flash(:error, "제목을 입력해 주세요")}
+         |> put_flash(:error, "Please enter a title.")}
 
       {:error, :invalid_tweet_url} ->
         {:noreply,
          socket
          |> assign(:share_form, share_form(share_params))
-         |> put_flash(:error, "유효한 링크를 입력해 주세요")}
+         |> put_flash(:error, "Please enter a valid link.")}
 
       {:error, _} ->
         {:noreply,
          socket
          |> assign(:share_form, share_form(share_params))
-         |> put_flash(:error, "방을 만들 수 없습니다")}
+         |> put_flash(:error, "Unable to create room.")}
     end
   end
 
@@ -194,7 +195,7 @@ defmodule MatdoriWeb.ShareLive do
               field={@share_form[:tweet_url]}
               type="url"
               class="x-compose-input"
-              placeholder="링크를 먼저 입력하세요"
+              placeholder="Enter a link first"
             />
 
             <div class="x-compose-cta-row">
@@ -204,7 +205,7 @@ defmodule MatdoriWeb.ShareLive do
                 type="submit"
                 class="mat-btn-secondary"
               >
-                검색하기
+                Search
               </button>
 
               <button
@@ -214,7 +215,7 @@ defmodule MatdoriWeb.ShareLive do
                 phx-click="start_create"
                 class="mat-btn-primary"
               >
-                새 방 만들기
+                Create New Room
               </button>
 
               <button
@@ -223,7 +224,7 @@ defmodule MatdoriWeb.ShareLive do
                 type="submit"
                 class="mat-btn-primary"
               >
-                <.icon name="hero-plus" class="h-4 w-4" /> 방 만들기
+                <.icon name="hero-plus" class="h-4 w-4" /> Create Room
               </button>
             </div>
           </div>
@@ -234,16 +235,16 @@ defmodule MatdoriWeb.ShareLive do
             field={@share_form[:title]}
             type="text"
             class="x-compose-link"
-            placeholder="제목을 입력해 방 이름을 정하세요"
+            placeholder="Enter a title for the room"
             required
           />
         </.form>
 
         <%= if !@authenticated do %>
           <div id="share-login-required" class="x-login-required">
-            <p>비로그인 사용자는 조회만 가능합니다. 로그인하면 바로 방 생성이 가능합니다.</p>
+            <p>Guests can view only. Sign in to create rooms.</p>
             <.link id="share-login-link" navigate={~p"/login"} class="mat-btn-primary">
-              Google 로그인 후 방 만들기
+              Sign in with Google to create a room
             </.link>
           </div>
         <% end %>
@@ -253,33 +254,77 @@ defmodule MatdoriWeb.ShareLive do
         <div id="share-feed-controls" class="x-feed-controls">
           <form id="share-feed-sort-form" phx-change="set_feed_sort">
             <select id="share-feed-sort" name="sort" class="x-feed-select">
-              <option value="latest" selected={@feed_sort == "latest"}>최신순</option>
-              <option value="views" selected={@feed_sort == "views"}>조회순</option>
-              <option value="live" selected={@feed_sort == "live"}>실시간 인기순</option>
+              <option value="latest" selected={@feed_sort == "latest"}>Latest</option>
+              <option value="views" selected={@feed_sort == "views"}>Most Viewed</option>
+              <option value="live" selected={@feed_sort == "live"}>Live Popular</option>
             </select>
           </form>
         </div>
 
         <%= if @feed_posts == [] do %>
-          <div id="share-feed-empty" class="x-feed-empty">아직 방이 없습니다. 첫 방을 만들어 보세요.</div>
+          <div id="share-feed-empty" class="x-feed-empty">No rooms yet. Create the first room.</div>
         <% else %>
-          <div id="share-feed-list" class="space-y-2.5">
+          <div id="share-feed-list" class="x-media-grid" phx-hook="MasonryGrid">
             <%= for post <- @feed_posts do %>
               <.link
                 id={"share-feed-item-#{post.id}"}
                 navigate={~p"/rooms/#{post.id}"}
-                class="mat-card block p-3"
+                class={media_card_class(post)}
               >
-                <div class="flex items-center gap-2.5">
-                  <p class="truncate text-sm font-bold text-slate-900">{display_title(post)}</p>
-                  <span class="mat-pill px-2.5 py-1 text-[11px]">
-                    현재 접속 {Map.get(@active_counts, post.id, 0)}
+                <div class={media_frame_class(post)}>
+                  <%= cond do %>
+                    <% embed_provider(post) == :x -> %>
+                      <div
+                        id={"share-feed-x-embed-#{post.id}"}
+                        class="x-media-x-embed"
+                        phx-hook="XEmbed"
+                        phx-update="ignore"
+                        data-tweet-url={post.tweet_url}
+                      >
+                      </div>
+                    <% embed_provider(post) == :youtube and youtube_embed_url(post) -> %>
+                      <iframe
+                        id={"share-feed-youtube-#{post.id}"}
+                        src={youtube_embed_url(post)}
+                        title={display_title(post)}
+                        class="x-media-youtube"
+                        loading="lazy"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                      >
+                      </iframe>
+                    <% preview_image_url(post) -> %>
+                      <img
+                        src={preview_image_url(post)}
+                        alt={display_title(post)}
+                        class="x-media-thumb"
+                        loading="lazy"
+                      />
+                    <% true -> %>
+                      <div class="x-media-fallback">
+                        <p class="x-media-fallback-title">{display_title(post)}</p>
+                        <p class="x-media-fallback-url">{fallback_preview_text(post)}</p>
+                      </div>
+                  <% end %>
+
+                  <span class="x-media-status">
+                    Active now {Map.get(@active_counts, post.id, 0)}
                   </span>
-                </div>
-                <p class="mt-1 truncate text-xs text-slate-500">{post.tweet_url}</p>
-                <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                  <span id={"share-feed-view-count-#{post.id}"}>조회수 {post.view_count}</span>
-                  <span id={"share-feed-like-count-#{post.id}"}>좋아요 {post.like_count}</span>
+
+                  <div class="x-media-overlay">
+                    <p class="x-media-title">{display_title(post)}</p>
+                    <div class="x-media-metrics">
+                      <span id={"share-feed-view-count-#{post.id}"}>Views {post.view_count}</span>
+                      <span id={"share-feed-like-count-#{post.id}"}>Likes {post.like_count}</span>
+                      <span id={"share-feed-dislike-count-#{post.id}"}>
+                        Dislikes {post.dislike_count}
+                      </span>
+                      <span id={"share-feed-active-count-#{post.id}"}>
+                        Active {Map.get(@active_counts, post.id, 0)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </.link>
             <% end %>
@@ -371,10 +416,54 @@ defmodule MatdoriWeb.ShareLive do
 
   defp display_title(post) do
     case String.trim(post.title || "") do
-      "" -> "제목 없는 공유"
+      "" -> "Untitled Share"
       title -> title
     end
   end
+
+  defp preview_image_url(post) do
+    case String.trim(post.preview_image_url || "") do
+      "" -> nil
+      url -> url
+    end
+  end
+
+  defp embed_provider(post), do: post.tweet_url |> Embed.classify() |> Map.get(:provider)
+  defp youtube_embed_url(post), do: post.tweet_url |> Embed.classify() |> Map.get(:embed_url)
+
+  defp media_card_class(post) do
+    [
+      "x-media-card group",
+      "x-media-card--#{media_type(post)}"
+    ]
+  end
+
+  defp media_frame_class(post) do
+    [
+      "x-media-frame",
+      "x-media-frame--#{media_type(post)}"
+    ]
+  end
+
+  defp media_type(post) do
+    cond do
+      embed_provider(post) == :x -> "x"
+      embed_provider(post) == :youtube and youtube_embed_url(post) -> "youtube"
+      preview_image_url(post) -> "image"
+      true -> "fallback"
+    end
+  end
+
+  defp fallback_preview_text(post) do
+    post.preview_description ||
+      post.preview_title ||
+      snapshot_preview_text(post.current_snapshot) ||
+      post.tweet_url
+  end
+
+  defp snapshot_preview_text(%Ecto.Association.NotLoaded{}), do: nil
+  defp snapshot_preview_text(nil), do: nil
+  defp snapshot_preview_text(snapshot), do: snapshot.normalized_text
 
   defp logged_in?(session) when is_map(session) do
     case session["google_uid"] do

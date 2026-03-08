@@ -64,18 +64,18 @@ defmodule MatdoriWeb.MyPageLiveTest do
                "google_uid" => google_uid,
                "display_name" => "My Page User",
                "color" => "#3b82f6",
-               "quote_exact" => "텍스트",
+               "quote_exact" => "This",
                "quote_prefix" => "",
                "quote_suffix" => "",
                "start_g" => 0,
-               "end_g" => 3
+               "end_g" => 4
              })
 
     {:ok, view, _html} = live(conn, ~p"/me")
 
     assert has_element?(view, "#my-page")
     assert has_element?(view, "#profile-topbar-back")
-    assert has_element?(view, "#profile-topbar-title", "프로필")
+    assert has_element?(view, "#profile-topbar-title", "Profile")
     assert has_element?(view, "#my-profile-header")
     assert has_element?(view, "#my-profile-name", "My Page User")
     assert has_element?(view, "#my-profile-interest")
@@ -159,7 +159,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
       })
       |> render_submit()
 
-    assert render(view) =~ "사용자 이름을 입력해 주세요"
+    assert render(view) =~ "Please enter a username."
     assert has_element?(view, "#my-profile-edit-modal")
   end
 

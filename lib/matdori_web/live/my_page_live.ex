@@ -25,7 +25,7 @@ defmodule MatdoriWeb.MyPageLive do
     avatar_url = session["google_avatar"]
 
     profile = Collab.get_profile_by_google_uid(google_uid)
-    display_name = profile.display_name || session_display_name || "프로필"
+    display_name = profile.display_name || session_display_name || "Profile"
 
     profile_color =
       normalize_profile_color(profile.color || session["color"] || @default_profile_color)
@@ -58,7 +58,7 @@ defmodule MatdoriWeb.MyPageLive do
 
     display_name =
       profile.display_name || socket.assigns.session_display_name || socket.assigns.display_name ||
-        "프로필"
+        "Profile"
 
     profile_color =
       normalize_profile_color(
@@ -140,7 +140,7 @@ defmodule MatdoriWeb.MyPageLive do
         {:noreply,
          socket
          |> assign(:profile_form, profile_form(display_name, interests, profile_color))
-         |> put_flash(:error, "사용자 이름을 입력해 주세요")}
+         |> put_flash(:error, "Please enter a username.")}
 
       true ->
         case Collab.upsert_profile_by_google_uid(socket.assigns.google_uid, %{
@@ -160,13 +160,13 @@ defmodule MatdoriWeb.MyPageLive do
              |> assign(:interests, saved_interests)
              |> assign(:editing_profile, false)
              |> assign(:profile_form, profile_form(saved_name, saved_interests, saved_color))
-             |> put_flash(:info, "프로필이 저장되었습니다")}
+             |> put_flash(:info, "Profile saved.")}
 
           {:error, _} ->
             {:noreply,
              socket
              |> assign(:profile_form, profile_form(display_name, interests, profile_color))
-             |> put_flash(:error, "프로필을 저장할 수 없습니다")}
+             |> put_flash(:error, "Could not save profile.")}
         end
     end
   end
@@ -178,19 +178,19 @@ defmodule MatdoriWeb.MyPageLive do
       {:noreply,
        socket
        |> reload_profile_lists()
-       |> put_flash(:info, "내 방이 삭제되었습니다")}
+       |> put_flash(:info, "Your room was deleted.")}
     else
       {:error, :forbidden} ->
-        {:noreply, put_flash(socket, :error, "본인이 만든 방만 삭제할 수 있습니다")}
+        {:noreply, put_flash(socket, :error, "You can delete only rooms you created.")}
 
       {:error, :not_found} ->
         {:noreply,
          socket
          |> reload_profile_lists()
-         |> put_flash(:error, "이미 삭제되었거나 존재하지 않는 방입니다")}
+         |> put_flash(:error, "Already deleted or room does not exist.")}
 
       _ ->
-        {:noreply, put_flash(socket, :error, "방을 삭제할 수 없습니다")}
+        {:noreply, put_flash(socket, :error, "Could not delete room.")}
     end
   end
 
@@ -205,8 +205,8 @@ defmodule MatdoriWeb.MyPageLive do
            ) do
       message =
         if result.deleted_total > 0,
-          do: "내 하이라이트가 삭제되었습니다",
-          else: "삭제할 내 하이라이트가 없습니다"
+          do: "Your highlights were deleted.",
+          else: "No highlights to delete."
 
       {:noreply,
        socket
@@ -214,7 +214,7 @@ defmodule MatdoriWeb.MyPageLive do
        |> put_flash(:info, message)}
     else
       _ ->
-        {:noreply, put_flash(socket, :error, "하이라이트를 삭제할 수 없습니다")}
+        {:noreply, put_flash(socket, :error, "Could not delete highlights.")}
     end
   end
 
@@ -255,7 +255,7 @@ defmodule MatdoriWeb.MyPageLive do
             </div>
             <div class="my-profile-meta">
               <h1 id="my-profile-name" class="text-2xl font-black tracking-tight text-slate-900">
-                {@display_name || "프로필"}
+                {@display_name || "Profile"}
               </h1>
               <p :if={@email} id="my-profile-email" class="text-sm text-slate-500">{@email}</p>
 
@@ -282,7 +282,7 @@ defmodule MatdoriWeb.MyPageLive do
               class="mat-btn-secondary my-profile-edit-btn"
               phx-click="open_profile_edit"
             >
-              프로필 편집
+              Edit Profile
             </button>
           </div>
 
@@ -294,7 +294,7 @@ defmodule MatdoriWeb.MyPageLive do
               phx-value-tab="created"
               class={profile_tab_class(@active_tab == "created")}
             >
-              내방
+              My Rooms
             </button>
             <button
               id="my-tab-highlighted"
@@ -303,7 +303,7 @@ defmodule MatdoriWeb.MyPageLive do
               phx-value-tab="highlighted"
               class={profile_tab_class(@active_tab == "highlighted")}
             >
-              하이라이트방
+              Highlighted Rooms
             </button>
             <button
               id="my-tab-liked"
@@ -312,7 +312,7 @@ defmodule MatdoriWeb.MyPageLive do
               phx-value-tab="liked"
               class={profile_tab_class(@active_tab == "liked")}
             >
-              좋아요방
+              Liked Rooms
             </button>
           </div>
         </div>
@@ -320,7 +320,7 @@ defmodule MatdoriWeb.MyPageLive do
         <div :if={@editing_profile} id="my-profile-edit-modal" class="my-profile-modal-backdrop">
           <div class="my-profile-modal-card" phx-click-away="close_profile_edit">
             <div class="my-profile-modal-head">
-              <h2 class="text-lg font-black tracking-tight text-slate-900">프로필 편집</h2>
+              <h2 class="text-lg font-black tracking-tight text-slate-900">Edit Profile</h2>
               <button
                 id="my-profile-edit-close"
                 type="button"
@@ -342,19 +342,19 @@ defmodule MatdoriWeb.MyPageLive do
                 id="my-profile-name-input"
                 field={@profile_form[:display_name]}
                 type="text"
-                label="사용자 이름"
+                label="Username"
                 required
               />
               <.input
                 id="my-profile-interests-input"
                 field={@profile_form[:interests_input]}
                 type="text"
-                label="관심 분야"
-                placeholder="예: AI, 스타트업, 제품 디자인"
+                label="Interests"
+                placeholder="e.g. AI, startups, product design"
               />
               <div class="space-y-2">
                 <label for="my-profile-color-input" class="text-sm font-semibold text-slate-700">
-                  내 색상 (커서/댓글/하이라이트)
+                  My Color (cursor/comments/highlights)
                 </label>
                 <div class="flex items-center gap-3">
                   <.input
@@ -392,7 +392,7 @@ defmodule MatdoriWeb.MyPageLive do
                   <% end %>
                 </div>
               </div>
-              <p class="my-profile-modal-help">쉼표(,)로 구분하면 여러 개를 입력할 수 있어요.</p>
+              <p class="my-profile-modal-help">Separate multiple items with commas (,).</p>
 
               <div class="my-profile-modal-actions">
                 <button
@@ -401,10 +401,10 @@ defmodule MatdoriWeb.MyPageLive do
                   class="mat-btn-secondary"
                   phx-click="close_profile_edit"
                 >
-                  취소
+                  Cancel
                 </button>
                 <button id="my-profile-save" type="submit" class="mat-btn-primary">
-                  저장
+                  Save
                 </button>
               </div>
             </.form>
@@ -416,10 +416,10 @@ defmodule MatdoriWeb.MyPageLive do
           id="my-created-rooms"
           class="my-profile-content-panel px-0 py-6 sm:py-7"
         >
-          <h2 class="text-xl font-black tracking-tight text-slate-900">내가 만든 방</h2>
+          <h2 class="text-xl font-black tracking-tight text-slate-900">Rooms I Created</h2>
           <%= if @created_posts == [] do %>
             <p id="my-created-empty" class="my-profile-empty mt-3 text-sm text-slate-500">
-              아직 생성한 방이 없습니다.
+              No rooms created yet.
             </p>
           <% else %>
             <div class="my-feed-list mt-4">
@@ -430,11 +430,11 @@ defmodule MatdoriWeb.MyPageLive do
                       <span class="my-feed-avatar">{author_initial(@display_name)}</span>
                       <div class="my-feed-author-meta">
                         <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "프로필"}</span>
+                          <span class="my-feed-name">{@display_name || "Profile"}</span>
                           <span class="my-feed-dot">·</span>
                           <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
                         </p>
-                        <p class="my-feed-kind">내가 올림</p>
+                        <p class="my-feed-kind">Posted by me</p>
                       </div>
                     </div>
 
@@ -443,7 +443,7 @@ defmodule MatdoriWeb.MyPageLive do
                       navigate={~p"/rooms/#{post.id}"}
                       class="my-feed-open-link"
                     >
-                      보기
+                      View
                     </.link>
 
                     <button
@@ -492,10 +492,10 @@ defmodule MatdoriWeb.MyPageLive do
           id="my-highlighted-rooms"
           class="my-profile-content-panel px-0 py-6 sm:py-7"
         >
-          <h2 class="text-xl font-black tracking-tight text-slate-900">내가 하이라이트한 방</h2>
+          <h2 class="text-xl font-black tracking-tight text-slate-900">Rooms I Highlighted</h2>
           <%= if @highlighted_posts == [] do %>
             <p id="my-highlighted-empty" class="my-profile-empty mt-3 text-sm text-slate-500">
-              하이라이트한 방이 없습니다.
+              No highlighted rooms.
             </p>
           <% else %>
             <div class="my-feed-list mt-4">
@@ -506,11 +506,11 @@ defmodule MatdoriWeb.MyPageLive do
                       <span class="my-feed-avatar">{author_initial(@display_name)}</span>
                       <div class="my-feed-author-meta">
                         <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "프로필"}</span>
+                          <span class="my-feed-name">{@display_name || "Profile"}</span>
                           <span class="my-feed-dot">·</span>
                           <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
                         </p>
-                        <p class="my-feed-kind">내가 하이라이트함</p>
+                        <p class="my-feed-kind">Highlighted by me</p>
                       </div>
                     </div>
 
@@ -519,7 +519,7 @@ defmodule MatdoriWeb.MyPageLive do
                       navigate={~p"/rooms/#{post.id}"}
                       class="my-feed-open-link"
                     >
-                      보기
+                      View
                     </.link>
 
                     <button
@@ -568,10 +568,10 @@ defmodule MatdoriWeb.MyPageLive do
           id="my-liked-rooms"
           class="my-profile-content-panel px-0 py-6 sm:py-7"
         >
-          <h2 class="text-xl font-black tracking-tight text-slate-900">내가 좋아요한 방</h2>
+          <h2 class="text-xl font-black tracking-tight text-slate-900">Rooms I Liked</h2>
           <%= if @liked_posts == [] do %>
             <p id="my-liked-empty" class="my-profile-empty mt-3 text-sm text-slate-500">
-              좋아요한 방이 없습니다.
+              No liked rooms.
             </p>
           <% else %>
             <div class="my-feed-list mt-4">
@@ -582,11 +582,11 @@ defmodule MatdoriWeb.MyPageLive do
                       <span class="my-feed-avatar">{author_initial(@display_name)}</span>
                       <div class="my-feed-author-meta">
                         <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "프로필"}</span>
+                          <span class="my-feed-name">{@display_name || "Profile"}</span>
                           <span class="my-feed-dot">·</span>
                           <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
                         </p>
-                        <p class="my-feed-kind">내가 좋아요함</p>
+                        <p class="my-feed-kind">Liked by me</p>
                       </div>
                     </div>
 
@@ -595,7 +595,7 @@ defmodule MatdoriWeb.MyPageLive do
                       navigate={~p"/rooms/#{post.id}"}
                       class="my-feed-open-link"
                     >
-                      보기
+                      View
                     </.link>
                   </div>
 
@@ -635,7 +635,7 @@ defmodule MatdoriWeb.MyPageLive do
 
   defp display_title(post) do
     case String.trim(post.title || "") do
-      "" -> "제목 없는 공유"
+      "" -> "Untitled Share"
       title -> title
     end
   end
@@ -718,7 +718,7 @@ defmodule MatdoriWeb.MyPageLive do
 
   defp format_post_date(%DateTime{} = inserted_at) do
     date = DateTime.to_date(inserted_at)
-    "#{date.month}월 #{date.day}일"
+    "#{date.month}/#{date.day}"
   end
 
   defp format_post_date(_inserted_at), do: "-"

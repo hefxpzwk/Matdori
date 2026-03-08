@@ -24,6 +24,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/matdori"
 import XEmbed from "./hooks/x_embed"
+import MasonryGrid from "./hooks/masonry_grid"
 import SnapshotCanvas from "./hooks/snapshot_canvas"
 import RemoteCursors from "./hooks/remote_cursors"
 import EmbedHighlightOverlay from "./hooks/embed_highlight_overlay"
@@ -36,6 +37,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {
     ...colocatedHooks,
     XEmbed,
+    MasonryGrid,
     SnapshotCanvas,
     RemoteCursors,
     EmbedHighlightOverlay,

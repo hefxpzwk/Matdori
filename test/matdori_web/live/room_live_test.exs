@@ -66,12 +66,12 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     assert has_element?(view, "#room-collab-stage[phx-hook='SnapshotCanvas']")
     assert has_element?(view, "#room-remote-cursors[phx-hook='RemoteCursors']")
-    assert has_element?(view, "#room-presence-count", "현재 접속 1명")
+    assert has_element?(view, "#room-presence-count", "Active 1")
     assert has_element?(view, "#room-embed-status")
-    assert has_element?(view, "#room-view-count", "조회수 1")
+    assert has_element?(view, "#room-view-count", "Views 1")
     assert has_element?(view, "#embed-highlight-mode-toggle")
     assert has_element?(view, "#embed-highlight-clear")
-    assert has_element?(view, "#embed-highlight-count", "0개 선택됨")
+    assert has_element?(view, "#embed-highlight-count", "0 selected")
     assert has_element?(view, "#embed-highlight-comment-panel.hidden")
     assert has_element?(view, "#embed-highlight-comment-pointer")
     assert has_element?(view, "#embed-highlight-comment-input")
@@ -80,8 +80,8 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#room-embed-content")
     assert has_element?(view, "#room-embed-highlight-overlay[phx-hook='EmbedHighlightOverlay']")
     assert has_element?(view, "#room-embed-highlight-overlay[data-session-id][data-user-color]")
-    assert render(view) =~ "임베드 가능"
-    assert render(view) =~ "조회수"
+    assert render(view) =~ "Embeddable"
+    assert render(view) =~ "Views"
     assert has_element?(view, "#tweet-embed")
     refute has_element?(view, "#link-card-list")
     refute has_element?(view, "#youtube-embed")
@@ -103,7 +103,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
 
     assert has_element?(view, "#room-embed-status")
-    assert render(view) =~ "임베드 가능"
+    assert render(view) =~ "Embeddable"
     assert has_element?(view, "#youtube-embed")
     assert has_element?(view, "#youtube-embed[src*='youtube.com/embed/iI5AmA9Vnhk']")
     assert has_element?(view, "#room-embed-highlight-overlay")
@@ -123,7 +123,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
 
     assert has_element?(view, "#room-embed-status")
-    assert render(view) =~ "미리보기"
+    assert render(view) =~ "Preview"
     assert has_element?(view, "#link-preview-card")
     assert has_element?(view, "#room-embed-highlight-overlay")
 
@@ -211,10 +211,10 @@ defmodule MatdoriWeb.RoomLiveTest do
     send(view_a.pid, {:room_refresh, post.id})
     send(view_b.pid, {:room_refresh, post.id})
 
-    assert has_element?(view_a, "#room-view-count", "조회수 2")
-    assert has_element?(view_b, "#room-view-count", "조회수 2")
-    assert has_element?(view_a, "#room-presence-count", "현재 접속 2명")
-    assert has_element?(view_b, "#room-presence-count", "현재 접속 2명")
+    assert has_element?(view_a, "#room-view-count", "Views 2")
+    assert has_element?(view_b, "#room-view-count", "Views 2")
+    assert has_element?(view_a, "#room-presence-count", "Active 2")
+    assert has_element?(view_b, "#room-presence-count", "Active 2")
     assert has_element?(view_a, "#room-presence-user-session-a")
     assert has_element?(view_a, "#room-presence-user-session-b")
     assert has_element?(view_a, "#like-count", "0")

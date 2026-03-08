@@ -59,7 +59,7 @@ defmodule MatdoriWeb.RoomLive do
       :invalid ->
         {:noreply,
          socket
-         |> put_flash(:error, "방을 찾을 수 없습니다")
+         |> put_flash(:error, "Cannot find room.")
          |> push_navigate(to: ~p"/rooms")}
     end
   end
@@ -197,16 +197,23 @@ defmodule MatdoriWeb.RoomLive do
         login_required_reply(socket)
 
       {:error, :overlap} ->
-        {:noreply, put_flash(socket, :error, "이미 존재하는 하이라이트와 선택 영역이 겹칩니다.")}
+        {:noreply,
+         put_flash(socket, :error, "The selected range overlaps an existing highlight.")}
 
       {:error, :ambiguous} ->
-        {:noreply, put_flash(socket, :error, "선택 영역이 모호합니다. 더 구체적인 구문을 선택해 주세요.")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The selected range is ambiguous. Please select a more specific phrase."
+         )}
 
       {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "하이라이트 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.")}
+        {:noreply,
+         put_flash(socket, :error, "Too many highlight requests. Please try again shortly.")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "하이라이트를 생성할 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Unable to create highlight.")}
 
       _ ->
         {:noreply, socket}
@@ -232,13 +239,13 @@ defmodule MatdoriWeb.RoomLive do
         login_required_reply(socket)
 
       {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "댓글 요청이 너무 많습니다. 잠시만 기다려 주세요.")}
+        {:noreply, put_flash(socket, :error, "Too many comment requests. Please wait a moment.")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "댓글을 저장할 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Unable to save comment.")}
 
       _ ->
-        {:noreply, put_flash(socket, :error, "먼저 하이라이트를 선택해 주세요.")}
+        {:noreply, put_flash(socket, :error, "Please select a highlight first.")}
     end
   end
 
@@ -254,10 +261,10 @@ defmodule MatdoriWeb.RoomLive do
         login_required_reply(socket)
 
       {:error, :forbidden} ->
-        {:noreply, put_flash(socket, :error, "본인이 최근에 작성한 댓글만 삭제할 수 있습니다.")}
+        {:noreply, put_flash(socket, :error, "You can only delete your own recent comments.")}
 
       {:error, _} ->
-        {:noreply, put_flash(socket, :error, "댓글을 삭제할 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Unable to delete comment.")}
 
       _ ->
         {:noreply, socket}
@@ -291,13 +298,13 @@ defmodule MatdoriWeb.RoomLive do
         login_required_reply(socket)
 
       {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "너무 빠르게 클릭하고 있습니다.")}
+        {:noreply, put_flash(socket, :error, "You are clicking too quickly.")}
 
       {:error, :invalid_reaction_kind} ->
-        {:noreply, put_flash(socket, :error, "지원하지 않는 반응입니다.")}
+        {:noreply, put_flash(socket, :error, "Unsupported reaction.")}
 
       _ ->
-        {:noreply, put_flash(socket, :error, "하트 상태를 변경할 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Unable to change reaction state.")}
     end
   end
 
@@ -316,16 +323,16 @@ defmodule MatdoriWeb.RoomLive do
              "display_name" => socket.assigns.display_name,
              "reason" => reason
            }) do
-      {:noreply, put_flash(socket, :info, "신고가 접수되었습니다. 감사합니다.")}
+      {:noreply, put_flash(socket, :info, "Report submitted. Thank you.")}
     else
       false ->
         login_required_reply(socket)
 
       {:error, :rate_limited} ->
-        {:noreply, put_flash(socket, :error, "현재 신고 한도에 도달했습니다.")}
+        {:noreply, put_flash(socket, :error, "You have reached the current report limit.")}
 
       _ ->
-        {:noreply, put_flash(socket, :error, "신고를 제출할 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Unable to submit report.")}
     end
   end
 
@@ -338,7 +345,7 @@ defmodule MatdoriWeb.RoomLive do
         |> String.slice(0, 30)
 
       if cleaned == "" do
-        {:noreply, put_flash(socket, :error, "표시 이름은 비워둘 수 없습니다.")}
+        {:noreply, put_flash(socket, :error, "Display name cannot be empty.")}
       else
         if socket.assigns.post do
           upsert_presence_meta(
@@ -350,7 +357,7 @@ defmodule MatdoriWeb.RoomLive do
         {:noreply,
          socket
          |> assign(:display_name, cleaned)
-         |> put_flash(:info, "이 세션의 표시 이름이 변경되었습니다.")}
+         |> put_flash(:info, "Display name for this session was updated.")}
       end
     else
       login_required_reply(socket)
@@ -429,7 +436,7 @@ defmodule MatdoriWeb.RoomLive do
       topbar={
         %{
           mode: :room,
-          title: if(@post, do: display_title(@post), else: "방"),
+          title: if(@post, do: display_title(@post), else: "Room"),
           refresh_event: "refresh_room_topbar"
         }
       }
@@ -462,7 +469,7 @@ defmodule MatdoriWeb.RoomLive do
                 rel="noopener noreferrer"
                 class="text-sm font-semibold text-teal-700 underline decoration-teal-300 underline-offset-4"
               >
-                원문 보기
+                View Original
               </a>
             </div>
 
@@ -475,7 +482,7 @@ defmodule MatdoriWeb.RoomLive do
                 aria-live="polite"
                 class="text-sm font-semibold text-slate-800"
               >
-                현재 접속 {participant_count(@presence_members)}명
+                Active {participant_count(@presence_members)}
               </p>
               <div id="room-presence-list" class="mt-2 flex flex-wrap items-center gap-2">
                 <span
@@ -509,7 +516,7 @@ defmodule MatdoriWeb.RoomLive do
                   !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
               >
-                <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> 좋아요
+                <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> Like
                 <span id="like-count">{@like_count}</span>
               </button>
 
@@ -528,7 +535,7 @@ defmodule MatdoriWeb.RoomLive do
                   !@authenticated && "cursor-not-allowed opacity-50"
                 ]}
               >
-                <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> 싫어요
+                <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> Dislike
                 <span id="dislike-count">{@dislike_count}</span>
               </button>
 
@@ -536,14 +543,16 @@ defmodule MatdoriWeb.RoomLive do
                 id="room-view-count"
                 class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700"
               >
-                조회수 {@view_count}
+                Views {@view_count}
               </span>
             </div>
 
             <div :if={!@authenticated} id="room-login-required" class="mb-3 text-sm text-slate-600">
-              비로그인 사용자는 조회만 가능합니다.
-              <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">로그인</.link>
-              후 반응/하이라이트/댓글을 사용할 수 있어요.
+              Guests can view only.
+              <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">
+                Log in
+              </.link>
+              to use reactions/highlights/comments.
             </div>
 
             <%= if @post.hidden do %>
@@ -551,7 +560,7 @@ defmodule MatdoriWeb.RoomLive do
                 id="takedown-state"
                 class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-800"
               >
-                콘텐츠를 볼 수 없습니다.
+                Content is unavailable.
               </div>
             <% else %>
               <div id="embed-highlight-controls" class="mb-4 flex flex-wrap items-center gap-2">
@@ -562,7 +571,7 @@ defmodule MatdoriWeb.RoomLive do
                   disabled={!@authenticated}
                   class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
                 >
-                  <.icon name="hero-pencil-square" class="h-4 w-4" /> 하이라이트 선택 모드
+                  <.icon name="hero-pencil-square" class="h-4 w-4" /> Highlight Select Mode
                 </button>
                 <button
                   id="embed-highlight-clear"
@@ -571,13 +580,13 @@ defmodule MatdoriWeb.RoomLive do
                   disabled={!@authenticated}
                   class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
                 >
-                  <.icon name="hero-trash" class="h-4 w-4" /> 선택 초기화
+                  <.icon name="hero-trash" class="h-4 w-4" /> Clear Selection
                 </button>
                 <span
                   id="embed-highlight-count"
                   class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700"
                 >
-                  0개 선택됨
+                  0 selected
                 </span>
               </div>
 
@@ -596,7 +605,7 @@ defmodule MatdoriWeb.RoomLive do
                         class="min-h-24 rounded-xl border border-slate-200 bg-white p-2"
                       >
                         <blockquote class="twitter-tweet">
-                          <a href={@post.tweet_url}>X 게시글</a>
+                          <a href={@post.tweet_url}>X Post</a>
                         </blockquote>
                       </div>
                     <% else %>
@@ -642,7 +651,7 @@ defmodule MatdoriWeb.RoomLive do
                                 :if={!preview_image_url(@post)}
                                 class="flex h-full items-center justify-center text-xs text-zinc-500"
                               >
-                                이미지 없음
+                                No image
                               </div>
                             </div>
                             <div class="space-y-1.5 p-3">
@@ -674,14 +683,14 @@ defmodule MatdoriWeb.RoomLive do
                           id="embed-highlight-comment-meta"
                           class="text-xs font-semibold text-slate-700"
                         >
-                          하이라이트
+                          Highlight
                         </p>
                         <button
                           id="embed-highlight-comment-close"
                           type="button"
                           class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
                         >
-                          <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> 닫기
+                          <.icon name="hero-x-mark" class="h-3.5 w-3.5" /> Close
                         </button>
                       </div>
 
@@ -689,7 +698,7 @@ defmodule MatdoriWeb.RoomLive do
                         id="embed-highlight-comment-readonly"
                         class="text-sm leading-relaxed text-slate-800"
                       >
-                        아직 댓글이 없습니다.
+                        No comments yet.
                       </p>
 
                       <div id="embed-highlight-comment-editor" class="hidden space-y-2">
@@ -697,14 +706,14 @@ defmodule MatdoriWeb.RoomLive do
                           for="embed-highlight-comment-input"
                           class="text-xs font-medium text-slate-600"
                         >
-                          이 하이라이트에 남길 코멘트
+                          Comment on this highlight
                         </label>
                         <textarea
                           id="embed-highlight-comment-input"
                           rows="3"
                           maxlength="240"
                           class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-400"
-                          placeholder="이 하이라이트의 의미를 남겨보세요"
+                          placeholder="Share what this highlight means"
                         ></textarea>
                         <div class="flex items-center justify-end gap-2">
                           <button
@@ -712,7 +721,7 @@ defmodule MatdoriWeb.RoomLive do
                             type="button"
                             class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
                           >
-                            <.icon name="hero-check" class="h-3.5 w-3.5" /> 댓글 저장
+                            <.icon name="hero-check" class="h-3.5 w-3.5" /> Save Comment
                           </button>
                         </div>
                       </div>
@@ -744,7 +753,7 @@ defmodule MatdoriWeb.RoomLive do
                 </div>
 
                 <p :if={embed_provider(@post) == :x} class="mt-2 text-xs text-slate-500">
-                  임베드가 로드되지 않으면 위의 원문 링크를 이용해 주세요.
+                  If the embed does not load, use the original link above.
                 </p>
               </div>
             <% end %>
@@ -762,7 +771,7 @@ defmodule MatdoriWeb.RoomLive do
             id="empty-state"
             class="mat-surface p-6 text-slate-700"
           >
-            방을 찾을 수 없습니다. 방 목록에서 다시 선택해 주세요.
+            Room not found. Please choose again from the room list.
           </div>
         <% end %>
       </section>
@@ -930,14 +939,14 @@ defmodule MatdoriWeb.RoomLive do
 
   defp display_title(post) do
     case String.trim(post.title || "") do
-      "" -> "제목 없는 공유"
+      "" -> "Untitled Share"
       title -> title
     end
   end
 
   defp preview_description(post) do
     case String.trim(post.preview_description || "") do
-      "" -> "원문 링크를 열어 자세한 내용을 확인하세요."
+      "" -> "Open the original link for more details."
       value -> value
     end
   end
@@ -978,7 +987,7 @@ defmodule MatdoriWeb.RoomLive do
     label = normalize_display_name(presence)
 
     if session_id == my_session_id do
-      "#{label} (나)"
+      "#{label} (me)"
     else
       label
     end
@@ -1147,7 +1156,7 @@ defmodule MatdoriWeb.RoomLive do
   defp login_required_reply(socket) do
     {:noreply,
      socket
-     |> put_flash(:error, "로그인한 사용자만 수정할 수 있습니다.")
+     |> put_flash(:error, "Only signed-in users can edit.")
      |> push_navigate(to: ~p"/login")}
   end
 

@@ -128,7 +128,7 @@ defmodule MatdoriWeb.ShareLiveTest do
       )
       |> render_submit()
 
-    assert render(view) =~ "링크를 입력해 주세요"
+    assert render(view) =~ "Please enter a link."
   end
 
   test "users can switch to create mode and create new room", %{conn: conn} do
@@ -241,7 +241,7 @@ defmodule MatdoriWeb.ShareLiveTest do
       )
       |> render_submit()
 
-    assert render(view) =~ "제목을 입력해 주세요"
+    assert render(view) =~ "Please enter a title."
   end
 
   test "invalid url shows validation feedback", %{conn: conn} do
@@ -257,7 +257,7 @@ defmodule MatdoriWeb.ShareLiveTest do
       )
       |> render_submit()
 
-    assert render(view) =~ "유효한 링크를 입력해 주세요"
+    assert render(view) =~ "Please enter a valid link."
   end
 
   test "unauthenticated users can only read and see login CTA", %{conn: conn} do

@@ -35,11 +35,11 @@ defmodule MatdoriWeb.RoomIndexLiveTest do
 
     assert has_element?(view, "#room-item-#{post.id}")
     assert has_element?(view, "#room-status-#{post.id}")
-    assert has_element?(view, "#room-like-count-#{post.id}", "좋아요 2")
-    assert has_element?(view, "#room-dislike-count-#{post.id}", "싫어요 1")
-    assert has_element?(view, "#room-view-count-#{post.id}", "조회수 0")
+    assert has_element?(view, "#room-like-count-#{post.id}", "Likes 2")
+    assert has_element?(view, "#room-dislike-count-#{post.id}", "Dislikes 1")
+    assert has_element?(view, "#room-view-count-#{post.id}", "Views 0")
     assert render(view) =~ "인덱스에서 보이는 제목"
-    assert render(view) =~ "임베드 가능"
+    assert render(view) =~ "Embeddable"
   end
 
   test "room index filters embedded and preview rooms", %{conn: conn} do
