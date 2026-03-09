@@ -502,8 +502,8 @@ defmodule MatdoriWeb.RoomLive do
               </a>
             </div>
 
-            <div id="room-content-layout" class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-              <div id="room-main-column" class="min-w-0 space-y-4">
+            <div id="room-content-layout" class="grid gap-4">
+              <div id="room-main-column" class="order-2 min-w-0 space-y-4">
                 <div :if={!@authenticated} id="room-login-required" class="text-sm text-slate-600">
                   Guests can view only.
                   <.link navigate={~p"/login"} class="font-semibold text-teal-700 underline">
@@ -522,11 +522,11 @@ defmodule MatdoriWeb.RoomLive do
                 <% else %>
                   <div
                     id="room-embed-layout"
-                    class="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start"
+                    class="flex min-w-0 flex-col gap-3"
                   >
                     <aside
                       id="room-presence-panel"
-                      class="mat-panel w-full p-3 lg:sticky lg:top-[6.4rem] lg:w-52 lg:self-start"
+                      class="mat-panel w-full p-3"
                     >
                       <p
                         id="room-presence-count"
@@ -553,12 +553,12 @@ defmodule MatdoriWeb.RoomLive do
 
                     <div
                       id="room-embed-stage"
-                      class="relative isolate overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-2 lg:flex-1"
+                      class="relative isolate overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-2"
                     >
-                      <div id="room-embed-center-rail" class="flex min-w-full justify-center">
+                      <div id="room-embed-center-rail" class="flex w-full justify-center">
                         <div
                           id="room-embed-content"
-                          class="relative w-full max-w-[760px]"
+                          class="relative w-[760px] min-w-[760px] max-w-[760px] shrink-0"
                         >
                           <%= if embed_provider(@post) == :x do %>
                             <div
@@ -726,10 +726,13 @@ defmodule MatdoriWeb.RoomLive do
                 <% end %>
               </div>
 
-              <aside id="room-side-column" class="space-y-3 lg:sticky lg:top-[5.6rem] lg:self-start">
+              <aside
+                id="room-side-column"
+                class="order-1 space-y-3"
+              >
                 <div
                   id="room-reactions"
-                  class="flex flex-wrap items-center gap-2 lg:flex-col lg:items-stretch"
+                  class="flex flex-nowrap items-center gap-1.5"
                 >
                   <button
                     id="like-button"
@@ -738,7 +741,7 @@ defmodule MatdoriWeb.RoomLive do
                     phx-value-kind="like"
                     disabled={!@authenticated}
                     class={[
-                      "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition lg:w-full lg:justify-between",
+                      "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
                       if(@liked,
                         do: "border-emerald-400 bg-emerald-50 text-emerald-700",
                         else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
@@ -757,7 +760,7 @@ defmodule MatdoriWeb.RoomLive do
                     phx-value-kind="dislike"
                     disabled={!@authenticated}
                     class={[
-                      "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-sm font-semibold transition lg:w-full lg:justify-between",
+                      "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
                       if(@disliked,
                         do: "border-rose-400 bg-rose-50 text-rose-700",
                         else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
@@ -771,7 +774,7 @@ defmodule MatdoriWeb.RoomLive do
 
                   <span
                     id="room-view-count"
-                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 lg:w-full lg:justify-between"
+                    class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
                   >
                     Views {@view_count}
                   </span>
@@ -852,39 +855,67 @@ defmodule MatdoriWeb.RoomLive do
               </p>
             <% end %>
 
-            <div id="room-comments-list" class="space-y-2">
+            <div id="room-comments-list" class="space-y-3">
               <div :if={@room_comments == []} id="room-comments-empty" class="text-sm text-slate-500">
                 No room comments yet.
               </div>
 
-              <article
+              <div
                 :for={comment <- @room_comments}
                 id={"room-comment-#{comment.id}"}
-                class="rounded-xl border border-slate-200 bg-white p-3"
+                class="relative"
               >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-xs font-semibold text-slate-700">{comment.display_name}</p>
-                    <p class="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">
-                      {comment.body}
+                <button
+                  :if={
+                    @authenticated and comment.session_id == @session_id and
+                      comment.body != "[deleted]"
+                  }
+                  id={"room-comment-delete-#{comment.id}"}
+                  type="button"
+                  phx-click="delete_comment"
+                  phx-value-id={comment.id}
+                  class="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"
+                >
+                  <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete
+                </button>
+
+                <div class="relative pr-20 text-left">
+                  <div class="flex items-center gap-2">
+                    <span
+                      id={"room-comment-profile-#{comment.id}"}
+                      class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
+                      style={"border-color: #{comment.color}; color: #{comment.color};"}
+                    >
+                      {comment_profile_initial(comment.display_name)}
+                    </span>
+
+                    <p
+                      id={"room-comment-author-#{comment.id}"}
+                      class="text-xs font-semibold text-slate-700"
+                    >
+                      {comment.display_name}
                     </p>
+
+                    <time
+                      id={"room-comment-time-#{comment.id}"}
+                      datetime={DateTime.to_iso8601(comment.inserted_at)}
+                      class="text-[11px] text-slate-500"
+                    >
+                      {format_comment_time(comment.inserted_at)}
+                    </time>
                   </div>
 
-                  <button
-                    :if={
-                      @authenticated and comment.session_id == @session_id and
-                        comment.body != "[deleted]"
-                    }
-                    id={"room-comment-delete-#{comment.id}"}
-                    type="button"
-                    phx-click="delete_comment"
-                    phx-value-id={comment.id}
-                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"
-                  >
-                    <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete
-                  </button>
+                  <div class="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)] items-start">
+                    <div class="relative h-0">
+                      <span class="absolute left-[0.875rem] -top-4 h-4 w-px bg-slate-300"></span>
+                      <span class="absolute left-[0.875rem] top-0 h-px w-[1.375rem] bg-slate-300">
+                      </span>
+                    </div>
+
+                    <p class="break-words text-sm leading-relaxed text-slate-800">{comment.body}</p>
+                  </div>
                 </div>
-              </article>
+              </div>
             </div>
           </div>
         <% else %>
@@ -1479,6 +1510,25 @@ defmodule MatdoriWeb.RoomLive do
       view_count: Collab.view_count(post_id)
     }
   end
+
+  defp comment_profile_initial(display_name) when is_binary(display_name) do
+    display_name
+    |> String.trim()
+    |> String.slice(0, 1)
+    |> case do
+      "" -> "G"
+      initial -> String.upcase(initial)
+    end
+  end
+
+  defp comment_profile_initial(_), do: "G"
+
+  defp format_comment_time(%DateTime{} = inserted_at) do
+    inserted_at
+    |> Calendar.strftime("%Y.%m.%d %H:%M")
+  end
+
+  defp format_comment_time(_), do: ""
 
   defp slice(graphemes, start_g, end_g) do
     graphemes

@@ -2271,8 +2271,17 @@ a {
 }
 
 #room-embed-stage {
+  overflow-x: hidden;
+  overflow-y: hidden;
   border-color: rgb(255 255 255 / 16%) !important;
   background: #000000 !important;
+}
+
+#room-embed-content {
+  width: 760px !important;
+  min-width: 760px !important;
+  max-width: 760px !important;
+  flex: 0 0 760px;
 }
 
 #room-embed-stage #tweet-embed,

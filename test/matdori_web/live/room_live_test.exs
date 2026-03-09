@@ -71,7 +71,7 @@ defmodule MatdoriWeb.RoomLiveTest do
       "room_comment" => %{"body" => "방 전체에 대한 의견입니다"}
     })
 
-    assert has_element?(view, "#room-comments-list article")
+    assert has_element?(view, "#room-comments-list > div[id^='room-comment-']")
 
     [comment | _] = Collab.list_room_comments(post.id)
     assert comment.body == "방 전체에 대한 의견입니다"

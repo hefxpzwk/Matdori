@@ -3,6 +3,7 @@ const CURSOR_PUSH_INTERVAL_MS = 70
 const MAX_COMMENT_LENGTH = 240
 const COMMENT_PANEL_GAP_PX = 12
 const COMMENT_PANEL_PADDING_PX = 8
+const HORIZONTAL_OVERFLOW_EPSILON_PX = 12
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
@@ -127,10 +128,10 @@ function normalizeZones(zones, limit = 40) {
 
 function normalizeToPixels(rect, zone) {
   return {
-    left: Math.round(zone.left * rect.width),
-    top: Math.round(zone.top * rect.height),
-    width: Math.round(zone.width * rect.width),
-    height: Math.round(zone.height * rect.height),
+    left: zone.left * rect.width,
+    top: zone.top * rect.height,
+    width: zone.width * rect.width,
+    height: zone.height * rect.height,
   }
 }
 
@@ -251,6 +252,7 @@ const EmbedHighlightOverlay = {
     this.dragging = false
     this.dragPointerId = null
     this.dragStart = null
+    this.currentDraftZone = null
 
     this.lastDraftPushAtMs = 0
     this.lastCursorPushAtMs = 0
@@ -745,6 +747,7 @@ const EmbedHighlightOverlay = {
     this.beginDraft = (x, y) => {
       this.dragStart = { x, y }
       this.dragging = true
+      this.currentDraftZone = null
       this.el.appendChild(this.draftNode)
       this.draftNode.classList.remove("hidden")
       this.draftNode.style.left = `${Math.round(x)}px`
@@ -770,6 +773,7 @@ const EmbedHighlightOverlay = {
 
       const rect = this.el.getBoundingClientRect()
       if (rect.width <= 0 || rect.height <= 0 || width < 1 || height < 1) {
+        this.currentDraftZone = null
         this.setLocalDraftZone(null, { push: true, immediate: false })
         return
       }
@@ -784,6 +788,7 @@ const EmbedHighlightOverlay = {
         { draft: true }
       )
 
+      this.currentDraftZone = zone
       this.setLocalDraftZone(zone, { push: true, immediate: false })
     }
 
@@ -791,6 +796,7 @@ const EmbedHighlightOverlay = {
       this.dragging = false
       this.dragPointerId = null
       this.dragStart = null
+      this.currentDraftZone = null
       this.draftNode.classList.add("hidden")
       this.draftNode.style.width = "0px"
       this.draftNode.style.height = "0px"
@@ -807,23 +813,28 @@ const EmbedHighlightOverlay = {
       }
 
       const rect = this.el.getBoundingClientRect()
-      const left = Number.parseFloat(this.draftNode.style.left || "0")
-      const top = Number.parseFloat(this.draftNode.style.top || "0")
-      const width = Number.parseFloat(this.draftNode.style.width || "0")
-      const height = Number.parseFloat(this.draftNode.style.height || "0")
+      const draftZone = this.currentDraftZone
 
       this.cancelDraft({ push: false })
 
-      if (width < 8 || height < 8 || rect.width <= 0 || rect.height <= 0) {
+      if (!draftZone || rect.width <= 0 || rect.height <= 0) {
+        this.setLocalDraftZone(null, { push: true, immediate: true })
+        return
+      }
+
+      const pixelWidth = draftZone.width * rect.width
+      const pixelHeight = draftZone.height * rect.height
+
+      if (pixelWidth < 8 || pixelHeight < 8) {
         this.setLocalDraftZone(null, { push: true, immediate: true })
         return
       }
 
       const normalized = normalizeZone({
-        left: left / rect.width,
-        top: top / rect.height,
-        width: width / rect.width,
-        height: height / rect.height,
+        left: draftZone.left,
+        top: draftZone.top,
+        width: draftZone.width,
+        height: draftZone.height,
         id: createLocalHighlightId(),
         comment: "",
       })
@@ -965,25 +976,32 @@ const EmbedHighlightOverlay = {
 
     this.onWindowResize = () => {
       this.onStageResize()
-      this.alignStageToCenter(true)
     }
 
     this.alignStageToCenter = (force = false) => {
-      if (!this.stageViewport) {
+      if (!this.stageViewport || !this.stage) {
         return
       }
 
-      const overflowWidth = this.stageViewport.scrollWidth - this.stageViewport.clientWidth
+      const viewportRect = this.stageViewport.getBoundingClientRect()
+      const contentRect = this.stage.getBoundingClientRect()
+      const hiddenOnLeft = contentRect.left < viewportRect.left - HORIZONTAL_OVERFLOW_EPSILON_PX
+      const hiddenOnRight = contentRect.right > viewportRect.right + HORIZONTAL_OVERFLOW_EPSILON_PX
+      const hasOverflow = hiddenOnLeft || hiddenOnRight
 
-      if (overflowWidth <= 0) {
+      this.stageViewport.style.overflowX = hasOverflow ? "auto" : "hidden"
+
+      if (!hasOverflow) {
         this.stageViewport.scrollLeft = 0
         return
       }
 
-      const target = Math.round(overflowWidth / 2)
+      const scrollLeft = this.stageViewport.scrollLeft
+      const maxScrollLeft = Math.max(0, this.stageViewport.scrollWidth - this.stageViewport.clientWidth)
+      const outOfRange = scrollLeft < 0 || scrollLeft > maxScrollLeft
 
-      if (force || Math.abs(this.stageViewport.scrollLeft - target) > 2) {
-        this.stageViewport.scrollLeft = target
+      if (force || outOfRange) {
+        this.stageViewport.scrollLeft = 0
       }
     }
 
@@ -1025,7 +1043,11 @@ const EmbedHighlightOverlay = {
       this.stageResizeObserver = new ResizeObserver(() => {
         this.onStageResize()
       })
-      this.stageResizeObserver.observe(this.stage)
+      this.stageResizeObserver.observe(this.stageViewport)
+
+      if (this.stage !== this.stageViewport) {
+        this.stageResizeObserver.observe(this.stage)
+      }
     }
 
     this.alignStageToCenter(true)
