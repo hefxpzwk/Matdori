@@ -1160,18 +1160,18 @@ select:focus-visible {
     color: #64748b;
   }
 
-  .x-profile-menu {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: calc(100% + 0.55rem);
+.x-profile-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 0.55rem);
     border: 1px solid rgb(15 23 42 / 14%);
     border-radius: 0.95rem;
     background: #ffffff;
     box-shadow: 0 16px 30px rgb(15 23 42 / 12%);
     padding: 0.35rem;
-    z-index: 30;
-  }
+  z-index: 120;
+}
 
   .x-profile-menu-item {
     width: 100%;
@@ -1246,7 +1246,7 @@ select:focus-visible {
   gap: 0.52rem;
   width: 100%;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   box-sizing: border-box;
 }
 
@@ -1443,7 +1443,7 @@ select:focus-visible {
   background: #ffffff;
   box-shadow: 0 14px 28px rgb(15 23 42 / 17%);
   padding: 0.34rem;
-  z-index: 60;
+  z-index: 120;
 }
 
 .x-profile-menu-item {

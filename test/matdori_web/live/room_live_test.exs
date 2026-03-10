@@ -91,7 +91,7 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     assert has_element?(view, "#room-collab-stage[phx-hook='SnapshotCanvas']")
     assert has_element?(view, "#room-remote-cursors[phx-hook='RemoteCursors']")
-    assert has_element?(view, "#room-presence-count", "Active 1")
+    assert has_element?(view, "#room-presence-count", "Live 1")
     assert has_element?(view, "#room-embed-status")
     assert has_element?(view, "#room-view-count", "Views 1")
     assert has_element?(view, "#embed-highlight-mode-toggle")
@@ -241,8 +241,8 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     assert has_element?(view_a, "#room-view-count", "Views 2")
     assert has_element?(view_b, "#room-view-count", "Views 2")
-    assert has_element?(view_a, "#room-presence-count", "Active 2")
-    assert has_element?(view_b, "#room-presence-count", "Active 2")
+    assert has_element?(view_a, "#room-presence-count", "Live 2")
+    assert has_element?(view_b, "#room-presence-count", "Live 2")
     assert has_element?(view_a, "#room-presence-user-session-a")
     assert has_element?(view_a, "#room-presence-user-session-b")
     assert has_element?(view_a, "#like-count", "0")

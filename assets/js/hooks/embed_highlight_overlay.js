@@ -366,7 +366,20 @@ const EmbedHighlightOverlay = {
         const author = document.createElement("p")
         author.className = "min-w-0 truncate text-xs font-semibold text-slate-700"
         author.textContent = normalizeName(comment.display_name)
-        head.appendChild(author)
+
+        const left = document.createElement("div")
+        left.className = "inline-flex min-w-0 items-center gap-2"
+
+        if (comment.avatar_url) {
+          const avatar = document.createElement("img")
+          avatar.src = comment.avatar_url
+          avatar.alt = normalizeName(comment.display_name)
+          avatar.className = "h-5 w-5 rounded-full border border-slate-200 object-cover"
+          left.appendChild(avatar)
+        }
+
+        left.appendChild(author)
+        head.appendChild(left)
 
         const right = document.createElement("div")
         right.className = "inline-flex items-center gap-2"
@@ -842,6 +855,7 @@ const EmbedHighlightOverlay = {
           display_name: normalizeName(comment.display_name),
           color: normalizeColor(comment.color, "#64748b"),
           body,
+          avatar_url: typeof comment.avatar_url === "string" ? comment.avatar_url.trim() : "",
           inserted_at: typeof comment.inserted_at === "string" ? comment.inserted_at : "",
         }
 

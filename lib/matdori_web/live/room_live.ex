@@ -566,15 +566,34 @@ defmodule MatdoriWeb.RoomLive do
                   {embed_status_label(@post)}
                 </span>
               </div>
-              <a
-                id="tweet-link"
-                href={@post.tweet_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-sm font-semibold text-teal-700 underline decoration-teal-300 underline-offset-4"
-              >
-                View Original
-              </a>
+              <aside id="room-presence-panel" class="flex items-center gap-2">
+                <p
+                  id="room-presence-count"
+                  aria-live="polite"
+                  class="text-xs font-semibold text-slate-700"
+                >
+                  Live {participant_count(@presence_members)}
+                </p>
+                <div id="room-presence-list" class="flex -space-x-2">
+                  <span
+                    :for={{session_id, presence} <- @presence_members}
+                    id={"room-presence-user-#{session_id}"}
+                    title={presence_label(presence, session_id, @session_id)}
+                    class="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white shadow-sm"
+                    style={"background-color: #{presence_color(presence)}"}
+                  >
+                    <img
+                      :if={presence_avatar_url(presence)}
+                      src={presence_avatar_url(presence)}
+                      alt={presence_label(presence, session_id, @session_id)}
+                      class="h-full w-full rounded-full object-cover"
+                    />
+                    <span :if={!presence_avatar_url(presence)}>
+                      {presence_avatar_initial(presence, session_id, @session_id)}
+                    </span>
+                  </span>
+                </div>
+              </aside>
             </div>
 
             <div id="room-content-layout" class="grid gap-4">
@@ -599,33 +618,6 @@ defmodule MatdoriWeb.RoomLive do
                     id="room-embed-layout"
                     class="flex min-w-0 flex-col gap-3"
                   >
-                    <aside
-                      id="room-presence-panel"
-                      class="mat-panel w-full p-3"
-                    >
-                      <p
-                        id="room-presence-count"
-                        aria-live="polite"
-                        class="text-sm font-semibold text-slate-800"
-                      >
-                        Active {participant_count(@presence_members)}
-                      </p>
-                      <div id="room-presence-list" class="mt-2 flex flex-col items-stretch gap-1.5">
-                        <span
-                          :for={{session_id, presence} <- @presence_members}
-                          id={"room-presence-user-#{session_id}"}
-                          class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
-                        >
-                          <span
-                            class="h-2.5 w-2.5 rounded-full"
-                            style={"background-color: #{presence_color(presence)}"}
-                          >
-                          </span>
-                          {presence_label(presence, session_id, @session_id)}
-                        </span>
-                      </div>
-                    </aside>
-
                     <div
                       id="room-embed-stage"
                       class="relative isolate overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60 p-2"
@@ -963,7 +955,17 @@ defmodule MatdoriWeb.RoomLive do
                       class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
                       style={"border-color: #{comment.color}; color: #{comment.color};"}
                     >
-                      {comment_profile_initial(comment.display_name)}
+                      <img
+                        :if={comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)}
+                        src={comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)}
+                        alt={comment.display_name}
+                        class="h-full w-full rounded-full object-cover"
+                      />
+                      <span :if={
+                        !comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)
+                      }>
+                        {comment_profile_initial(comment.display_name)}
+                      </span>
                     </span>
 
                     <p
@@ -1115,6 +1117,7 @@ defmodule MatdoriWeb.RoomLive do
       Presence.track(self(), presence_topic(post.id), socket.assigns.session_id, %{
         display_name: socket.assigns.display_name,
         color: socket.assigns.color,
+        avatar_url: socket.assigns.avatar_url,
         cursor: %{x: 0, y: 0},
         cursor_note_text: "",
         cursor_note_mode: "clear",
@@ -1215,7 +1218,8 @@ defmodule MatdoriWeb.RoomLive do
       {session_id,
        %{
          display_name: normalize_display_name(meta),
-         color: normalize_hex_color(meta_color(meta), "#64748b")
+         color: normalize_hex_color(meta_color(meta), "#64748b"),
+         avatar_url: normalize_avatar_url(meta_avatar_url(meta), nil)
        }}
     end)
   end
@@ -1234,6 +1238,22 @@ defmodule MatdoriWeb.RoomLive do
 
   defp presence_color(presence) do
     normalize_hex_color(meta_color(presence), "#64748b")
+  end
+
+  defp presence_avatar_url(presence) do
+    normalize_avatar_url(meta_avatar_url(presence), nil)
+  end
+
+  defp presence_avatar_initial(presence, session_id, my_session_id) do
+    presence
+    |> presence_label(session_id, my_session_id)
+    |> String.replace(" (me)", "")
+    |> String.trim()
+    |> String.first()
+    |> case do
+      nil -> "?"
+      value -> String.upcase(value)
+    end
   end
 
   defp unique_cursor_color(_session_id, fallback) when is_binary(fallback) do
@@ -1311,6 +1331,45 @@ defmodule MatdoriWeb.RoomLive do
     end
   end
 
+  defp meta_avatar_url(data) do
+    case data do
+      %{avatar_url: value} -> value
+      %{"avatar_url" => value} -> value
+      _ -> nil
+    end
+  end
+
+  defp normalize_avatar_url(value, default) when is_binary(value) do
+    trimmed = String.trim(value)
+
+    if trimmed == "" do
+      normalize_avatar_url(default, nil)
+    else
+      trimmed
+    end
+  end
+
+  defp normalize_avatar_url(_value, default) when is_binary(default),
+    do: normalize_avatar_url(default, nil)
+
+  defp normalize_avatar_url(_value, _default), do: nil
+
+  defp comment_avatar_url(comment, presence_members, my_session_id, my_avatar_url) do
+    cond do
+      is_binary(my_avatar_url) and my_avatar_url != "" and comment.session_id == my_session_id ->
+        my_avatar_url
+
+      is_map(presence_members) ->
+        case Map.get(presence_members, comment.session_id) do
+          nil -> nil
+          presence -> presence_avatar_url(presence)
+        end
+
+      true ->
+        nil
+    end
+  end
+
   defp meta_cursor(data) do
     case data do
       %{cursor: value} when is_map(value) -> value
@@ -1344,6 +1403,7 @@ defmodule MatdoriWeb.RoomLive do
     %{
       display_name: socket.assigns.display_name,
       color: socket.assigns.color,
+      avatar_url: socket.assigns.avatar_url,
       cursor: %{x: 0, y: 0},
       cursor_note_text: "",
       cursor_note_mode: "clear",
@@ -1362,6 +1422,7 @@ defmodule MatdoriWeb.RoomLive do
     %{
       display_name: normalize_display_name(meta),
       color: normalize_hex_color(meta_color(meta), socket.assigns.color),
+      avatar_url: normalize_avatar_url(meta_avatar_url(meta), socket.assigns.avatar_url),
       cursor: normalize_cursor_position(meta_cursor_x(meta), meta_cursor_y(meta), %{x: 0, y: 0}),
       cursor_note_text: normalize_cursor_note_text(meta_cursor_note_text(meta)),
       cursor_note_mode: mode,
@@ -1651,12 +1712,22 @@ defmodule MatdoriWeb.RoomLive do
   defp broadcast_overlay_highlights(_post_id), do: :ok
 
   defp push_overlay_highlight_states(socket, overlay_highlights, overlay_highlight_comments) do
+    presence_members = socket.assigns[:presence_members] || %{}
+    my_session_id = socket.assigns[:session_id]
+    my_avatar_url = socket.assigns[:avatar_url]
+
     socket
     |> push_event("overlay_highlights_state", %{
       highlights: overlay_highlights_payload(overlay_highlights)
     })
     |> push_event("overlay_highlight_comments_state", %{
-      comments: overlay_highlight_comments_payload(overlay_highlight_comments)
+      comments:
+        overlay_highlight_comments_payload(
+          overlay_highlight_comments,
+          presence_members,
+          my_session_id,
+          my_avatar_url
+        )
     })
   end
 
@@ -1678,7 +1749,13 @@ defmodule MatdoriWeb.RoomLive do
 
   defp overlay_highlights_payload(_), do: []
 
-  defp overlay_highlight_comments_payload(comments) when is_list(comments) do
+  defp overlay_highlight_comments_payload(
+         comments,
+         presence_members,
+         my_session_id,
+         my_avatar_url
+       )
+       when is_list(comments) do
     Enum.map(comments, fn comment ->
       %{
         id: comment.id,
@@ -1687,6 +1764,13 @@ defmodule MatdoriWeb.RoomLive do
         display_name: comment.display_name,
         color: comment.color,
         body: comment.body,
+        avatar_url:
+          comment_avatar_url_from_session(
+            comment.session_id,
+            presence_members,
+            my_session_id,
+            my_avatar_url
+          ),
         inserted_at:
           case comment.inserted_at do
             %DateTime{} = inserted_at -> DateTime.to_iso8601(inserted_at)
@@ -1696,7 +1780,32 @@ defmodule MatdoriWeb.RoomLive do
     end)
   end
 
-  defp overlay_highlight_comments_payload(_), do: []
+  defp overlay_highlight_comments_payload(_, _, _, _), do: []
+
+  defp comment_avatar_url_from_session(session_id, presence_members, my_session_id, my_avatar_url)
+       when is_binary(session_id) do
+    cond do
+      is_binary(my_avatar_url) and my_avatar_url != "" and session_id == my_session_id ->
+        my_avatar_url
+
+      is_map(presence_members) ->
+        case Map.get(presence_members, session_id) do
+          nil -> nil
+          presence -> presence_avatar_url(presence)
+        end
+
+      true ->
+        nil
+    end
+  end
+
+  defp comment_avatar_url_from_session(
+         _session_id,
+         _presence_members,
+         _my_session_id,
+         _my_avatar_url
+       ),
+       do: nil
 
   defp room_topic(post_id), do: "room:#{post_id}"
   defp presence_topic(post_id), do: "presence:#{post_id}"
