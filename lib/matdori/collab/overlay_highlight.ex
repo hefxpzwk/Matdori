@@ -2,7 +2,7 @@ defmodule Matdori.Collab.OverlayHighlight do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Matdori.Collab.Post
+  alias Matdori.Collab.{Comment, Post}
 
   schema "overlay_highlights" do
     field :highlight_key, :string
@@ -17,6 +17,7 @@ defmodule Matdori.Collab.OverlayHighlight do
     field :comment, :string, default: ""
 
     belongs_to :post, Post
+    has_many :comments, Comment
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -221,19 +221,20 @@ const EmbedHighlightOverlay = {
     this.stageViewport = this.stage ? this.stage.closest("#room-embed-stage") : null
     this.cursorStage = this.el.closest("#room-collab-stage") || this.stage
     this.toggleButton = document.querySelector(this.el.dataset.toggleSelector || "")
-    this.clearButton = document.querySelector(this.el.dataset.clearSelector || "")
+    this.modeStateLabel = document.querySelector("#embed-highlight-mode-state")
     this.countLabel = document.querySelector(this.el.dataset.countSelector || "")
 
-    if (!this.stage || !this.toggleButton || !this.clearButton || !this.countLabel) {
+    if (!this.stage || !this.toggleButton || !this.countLabel) {
       return
     }
 
     this.commentPanel = document.querySelector(this.el.dataset.commentPanelSelector || "")
     this.commentMeta = document.querySelector(this.el.dataset.commentMetaSelector || "")
-    this.commentReadonly = document.querySelector(this.el.dataset.commentReadonlySelector || "")
+    this.commentList = document.querySelector(this.el.dataset.commentListSelector || "")
     this.commentEditor = document.querySelector(this.el.dataset.commentEditorSelector || "")
     this.commentInput = document.querySelector(this.el.dataset.commentInputSelector || "")
     this.commentSaveButton = document.querySelector(this.el.dataset.commentSaveSelector || "")
+    this.highlightDeleteButton = document.querySelector(this.el.dataset.highlightDeleteSelector || "")
     this.commentCloseButton = document.querySelector(this.el.dataset.commentCloseSelector || "")
     this.commentPointer = document.querySelector(this.el.dataset.commentPointerSelector || "")
 
@@ -241,6 +242,7 @@ const EmbedHighlightOverlay = {
     this.myColor = normalizeColor(this.el.dataset.userColor, "#3b82f6")
 
     this.highlightsBySession = new Map()
+    this.commentsByHighlight = new Map()
     this.draftsBySession = new Map()
     this.highlightNodes = new Map()
     this.draftNodes = new Map()
@@ -284,6 +286,11 @@ const EmbedHighlightOverlay = {
       this.toggleButton.classList.toggle("border-zinc-300", !this.enabled)
       this.toggleButton.classList.toggle("bg-white", !this.enabled)
       this.toggleButton.classList.toggle("text-zinc-700", !this.enabled)
+      this.toggleButton.setAttribute("aria-pressed", this.enabled ? "true" : "false")
+
+      if (this.modeStateLabel) {
+        this.modeStateLabel.textContent = this.enabled ? "ON" : "OFF"
+      }
     }
 
     this.myHighlights = () => {
@@ -304,6 +311,96 @@ const EmbedHighlightOverlay = {
 
       this.countLabel.textContent =
         totalCount > ownCount ? `${ownCount}개 선택됨 · 전체 ${totalCount}개` : `${ownCount}개 선택됨`
+    }
+
+    this.commentsForHighlight = (highlightId) => {
+      const key = typeof highlightId === "string" ? highlightId.trim() : ""
+      if (key === "") {
+        return []
+      }
+
+      return this.commentsByHighlight.get(key) || []
+    }
+
+    this.formatCommentTimestamp = (value) => {
+      if (typeof value !== "string" || value.trim() === "") {
+        return ""
+      }
+
+      const parsed = new Date(value)
+      if (Number.isNaN(parsed.getTime())) {
+        return ""
+      }
+
+      return parsed.toLocaleString("ko-KR", {
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    }
+
+    this.renderCommentList = (entry) => {
+      if (!this.commentList) {
+        return
+      }
+
+      const comments = this.commentsForHighlight(entry.zone.id)
+      this.commentList.innerHTML = ""
+
+      if (comments.length === 0) {
+        const emptyNode = document.createElement("p")
+        emptyNode.className = "text-sm text-slate-500"
+        emptyNode.textContent = "No comments yet."
+        this.commentList.appendChild(emptyNode)
+        return
+      }
+
+      comments.forEach((comment) => {
+        const row = document.createElement("div")
+        row.className = "rounded-lg border border-slate-200 bg-white/90 px-2.5 py-2"
+
+        const head = document.createElement("div")
+        head.className = "flex items-center justify-between gap-2"
+
+        const author = document.createElement("p")
+        author.className = "min-w-0 truncate text-xs font-semibold text-slate-700"
+        author.textContent = normalizeName(comment.display_name)
+        head.appendChild(author)
+
+        const right = document.createElement("div")
+        right.className = "inline-flex items-center gap-2"
+
+        const time = document.createElement("time")
+        time.className = "text-[11px] text-slate-500"
+        const stamp = this.formatCommentTimestamp(comment.inserted_at)
+        time.textContent = stamp
+        if (typeof comment.inserted_at === "string") {
+          time.dateTime = comment.inserted_at
+        }
+        right.appendChild(time)
+
+        if (comment.session_id === this.mySessionId) {
+          const deleteButton = document.createElement("button")
+          deleteButton.type = "button"
+          deleteButton.dataset.overlayCommentDelete = "true"
+          deleteButton.dataset.commentId = String(comment.id)
+          deleteButton.className =
+            "inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100"
+          deleteButton.textContent = "Delete"
+          right.appendChild(deleteButton)
+        }
+
+        head.appendChild(right)
+
+        const body = document.createElement("p")
+        body.className = "mt-1 break-words text-sm leading-relaxed text-slate-800"
+        body.textContent = comment.body
+
+        row.appendChild(head)
+        row.appendChild(body)
+        this.commentList.appendChild(row)
+      })
     }
 
     this.getHighlightEntry = (sessionId, highlightId) => {
@@ -351,8 +448,8 @@ const EmbedHighlightOverlay = {
 
       const overlayRect = this.el.getBoundingClientRect()
       const zonePixels = normalizeToPixels(overlayRect, entry.zone)
-      const panelWidth = this.commentPanel.offsetWidth || 288
-      const panelHeight = this.commentPanel.offsetHeight || 180
+      const panelWidth = this.commentPanel.offsetWidth || 416
+      const panelHeight = this.commentPanel.offsetHeight || 220
 
       const zoneCenterY = zonePixels.top + zonePixels.height / 2
       const rightSideLeft = zonePixels.left + zonePixels.width + COMMENT_PANEL_GAP_PX
@@ -399,32 +496,34 @@ const EmbedHighlightOverlay = {
         return
       }
 
-      const panelKey = `${entry.sessionId}|${entry.zone.id}|${entry.zone.comment}`
+      const comments = this.commentsForHighlight(entry.zone.id)
+      const panelKey = `${entry.sessionId}|${entry.zone.id}|${comments.length}`
       this.commentPanel.classList.remove("hidden")
 
       if (this.commentMeta) {
         this.commentMeta.textContent = `${entry.payload.name}님의 하이라이트`
       }
 
-      if (this.commentReadonly) {
-        this.commentReadonly.textContent =
-          entry.zone.comment === "" ? "아직 댓글이 없습니다." : entry.zone.comment
-      }
+      this.renderCommentList(entry)
 
       if (this.commentEditor) {
-        this.commentEditor.classList.toggle("hidden", !entry.isMine)
+        this.commentEditor.classList.remove("hidden")
       }
 
-      if (this.commentInput && entry.isMine && panelKey !== this.lastPanelKey) {
-        this.commentInput.value = entry.zone.comment
+      if (this.commentInput && panelKey !== this.lastPanelKey) {
+        this.commentInput.value = ""
       }
 
       if (this.commentInput) {
-        this.commentInput.readOnly = !entry.isMine
+        this.commentInput.readOnly = false
       }
 
       if (this.commentSaveButton) {
-        this.commentSaveButton.disabled = !entry.isMine
+        this.commentSaveButton.disabled = false
+      }
+
+      if (this.highlightDeleteButton) {
+        this.highlightDeleteButton.disabled = !entry.isMine
       }
 
       this.positionCommentPanel(entry)
@@ -572,7 +671,7 @@ const EmbedHighlightOverlay = {
       }
     }
 
-    this.updateMyHighlightComment = (highlightId, comment) => {
+    this.deleteMyHighlight = (highlightId) => {
       if (!this.mySessionId) {
         return
       }
@@ -582,13 +681,22 @@ const EmbedHighlightOverlay = {
         return
       }
 
-      const normalizedComment = normalizeComment(comment)
-      const updatedZones = mine.zones.map((zone) =>
-        zone.id === highlightId ? { ...zone, comment: normalizedComment } : zone
-      )
-
+      const updatedZones = mine.zones.filter((zone) => zone.id !== highlightId)
       this.setMyHighlights(updatedZones)
-      this.setSelection(this.mySessionId, highlightId)
+      this.clearSelection()
+    }
+
+    this.submitHighlightComment = (highlightId, comment) => {
+      this.pushEvent("overlay_highlight_comment_create", {
+        highlight_id: highlightId,
+        body: normalizeComment(comment),
+      })
+    }
+
+    this.deleteOverlayComment = (commentId) => {
+      this.pushEvent("overlay_highlight_comment_delete", {
+        comment_id: String(commentId),
+      })
     }
 
     this.pushDraftNow = (zone) => {
@@ -711,6 +819,44 @@ const EmbedHighlightOverlay = {
       this.syncStateAndRender()
     }
 
+    this.applyOverlayHighlightCommentsState = ({ comments }) => {
+      const nextCommentsByHighlight = new Map()
+
+      ;(Array.isArray(comments) ? comments : []).forEach((comment) => {
+        if (!comment || typeof comment !== "object") {
+          return
+        }
+
+        const highlightId = typeof comment.highlight_id === "string" ? comment.highlight_id.trim() : ""
+        const commentId = Number(comment.id)
+        const body = typeof comment.body === "string" ? comment.body.trim() : ""
+
+        if (highlightId === "" || !Number.isInteger(commentId) || body === "") {
+          return
+        }
+
+        const row = {
+          id: commentId,
+          highlight_id: highlightId,
+          session_id: typeof comment.session_id === "string" ? comment.session_id : "",
+          display_name: normalizeName(comment.display_name),
+          color: normalizeColor(comment.color, "#64748b"),
+          body,
+          inserted_at: typeof comment.inserted_at === "string" ? comment.inserted_at : "",
+        }
+
+        const list = nextCommentsByHighlight.get(highlightId)
+        if (list) {
+          list.push(row)
+        } else {
+          nextCommentsByHighlight.set(highlightId, [row])
+        }
+      })
+
+      this.commentsByHighlight = nextCommentsByHighlight
+      this.syncStateAndRender()
+    }
+
     this.applyPresenceHighlights = ({ presences, me }) => {
       if (typeof me === "string" && me !== "") {
         this.mySessionId = me
@@ -742,6 +888,7 @@ const EmbedHighlightOverlay = {
     }
 
     this.handleEvent("overlay_highlights_state", this.applyOverlayHighlightsState)
+    this.handleEvent("overlay_highlight_comments_state", this.applyOverlayHighlightCommentsState)
     this.handleEvent("presence_state", this.applyPresenceHighlights)
 
     this.beginDraft = (x, y) => {
@@ -881,11 +1028,55 @@ const EmbedHighlightOverlay = {
       event.preventDefault()
       const entry = this.currentSelectionEntry()
 
-      if (!entry || !entry.isMine || !this.commentInput) {
+      if (!entry || !this.commentInput) {
         return
       }
 
-      this.updateMyHighlightComment(entry.zone.id, this.commentInput.value)
+      const nextBody = normalizeComment(this.commentInput.value)
+      if (nextBody === "") {
+        return
+      }
+
+      this.submitHighlightComment(entry.zone.id, nextBody)
+      this.commentInput.value = ""
+    }
+
+    this.onCommentListClick = (event) => {
+      event.preventDefault()
+      const target = event.target instanceof HTMLElement ? event.target.closest("[data-overlay-comment-delete='true']") : null
+
+      if (!(target instanceof HTMLElement)) {
+        return
+      }
+
+      const commentIdRaw = target.dataset.commentId || ""
+      const parsed = Number.parseInt(commentIdRaw, 10)
+
+      if (!Number.isInteger(parsed)) {
+        return
+      }
+
+      this.deleteOverlayComment(parsed)
+    }
+
+    this.onCommentInputKeyDown = (event) => {
+      if (event.key !== "Enter") {
+        return
+      }
+
+      event.preventDefault()
+      this.onCommentSaveClick(event)
+    }
+
+    this.onHighlightDeleteClick = (event) => {
+      event.preventDefault()
+      const entry = this.currentSelectionEntry()
+
+      if (!entry || !entry.isMine) {
+        return
+      }
+
+      this.deleteMyHighlight(entry.zone.id)
     }
 
     this.onCommentCloseClick = (event) => {
@@ -902,11 +1093,6 @@ const EmbedHighlightOverlay = {
       }
 
       this.syncModeUi()
-    }
-
-    this.onClearClick = (event) => {
-      event.preventDefault()
-      this.clearHighlights()
     }
 
     this.onPointerDown = (event) => {
@@ -1025,7 +1211,6 @@ const EmbedHighlightOverlay = {
     }
 
     this.toggleButton.addEventListener("click", this.onToggleClick)
-    this.clearButton.addEventListener("click", this.onClearClick)
     this.el.addEventListener("pointerdown", this.onPointerDown)
     this.el.addEventListener("pointermove", this.onPointerMove)
     this.el.addEventListener("pointerup", this.onPointerUp)
@@ -1033,6 +1218,18 @@ const EmbedHighlightOverlay = {
 
     if (this.commentSaveButton) {
       this.commentSaveButton.addEventListener("click", this.onCommentSaveClick)
+    }
+
+    if (this.commentList) {
+      this.commentList.addEventListener("click", this.onCommentListClick)
+    }
+
+    if (this.commentInput) {
+      this.commentInput.addEventListener("keydown", this.onCommentInputKeyDown)
+    }
+
+    if (this.highlightDeleteButton) {
+      this.highlightDeleteButton.addEventListener("click", this.onHighlightDeleteClick)
     }
 
     if (this.commentCloseButton) {
@@ -1067,12 +1264,20 @@ const EmbedHighlightOverlay = {
       this.toggleButton.removeEventListener("click", this.onToggleClick)
     }
 
-    if (this.clearButton && this.onClearClick) {
-      this.clearButton.removeEventListener("click", this.onClearClick)
-    }
-
     if (this.commentSaveButton && this.onCommentSaveClick) {
       this.commentSaveButton.removeEventListener("click", this.onCommentSaveClick)
+    }
+
+    if (this.commentList && this.onCommentListClick) {
+      this.commentList.removeEventListener("click", this.onCommentListClick)
+    }
+
+    if (this.commentInput && this.onCommentInputKeyDown) {
+      this.commentInput.removeEventListener("keydown", this.onCommentInputKeyDown)
+    }
+
+    if (this.highlightDeleteButton && this.onHighlightDeleteClick) {
+      this.highlightDeleteButton.removeEventListener("click", this.onHighlightDeleteClick)
     }
 
     if (this.commentCloseButton && this.onCommentCloseClick) {

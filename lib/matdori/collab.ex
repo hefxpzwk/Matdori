@@ -576,6 +576,111 @@ defmodule Matdori.Collab do
 
   def list_overlay_highlights(_post_id), do: []
 
+  def list_overlay_highlight_comments(post_id) when is_integer(post_id) do
+    Repo.all(
+      from c in Comment,
+        join: h in OverlayHighlight,
+        on: h.id == c.overlay_highlight_id,
+        where: h.post_id == ^post_id and is_nil(c.deleted_at),
+        order_by: [asc: c.inserted_at, asc: c.id],
+        select: %{
+          id: c.id,
+          highlight_id: h.highlight_key,
+          session_id: c.session_id,
+          display_name: c.display_name,
+          color: c.color,
+          body: c.body,
+          inserted_at: c.inserted_at
+        }
+    )
+  end
+
+  def list_overlay_highlight_comments(_post_id), do: []
+
+  def create_overlay_highlight_comment(post_id, highlight_key, attrs)
+      when is_integer(post_id) and is_binary(highlight_key) and is_map(attrs) do
+    key = highlight_key |> String.trim() |> String.slice(0, 80)
+
+    if key == "" do
+      {:error, :invalid_overlay_highlight}
+    else
+      case Repo.get_by(OverlayHighlight, post_id: post_id, highlight_key: key) do
+        nil ->
+          {:error, :not_found}
+
+        %OverlayHighlight{} = overlay_highlight ->
+          %Comment{}
+          |> Comment.changeset(%{
+            overlay_highlight_id: overlay_highlight.id,
+            session_id: attrs["session_id"] || attrs[:session_id],
+            google_uid: normalize_google_uid(attrs["google_uid"] || attrs[:google_uid]),
+            display_name: attrs["display_name"] || attrs[:display_name],
+            color: normalize_overlay_color(attrs["color"] || attrs[:color]),
+            body: attrs["body"] || attrs[:body]
+          })
+          |> Repo.insert()
+      end
+    end
+  end
+
+  def create_overlay_highlight_comment(_post_id, _highlight_key, _attrs),
+    do: {:error, :invalid_overlay_highlight}
+
+  def soft_delete_overlay_highlight_comment(post_id, comment_id, session_id, google_uid \\ nil)
+
+  def soft_delete_overlay_highlight_comment(post_id, comment_id, session_id, google_uid)
+      when is_integer(post_id) and is_integer(comment_id) and is_binary(session_id) do
+    uid = normalize_google_uid(google_uid)
+
+    comment =
+      Repo.one(
+        from c in Comment,
+          join: h in OverlayHighlight,
+          on: h.id == c.overlay_highlight_id,
+          where: c.id == ^comment_id and h.post_id == ^post_id,
+          select: c
+      )
+
+    with %Comment{} = loaded <- comment,
+         true <-
+           loaded.session_id == session_id or
+             (is_binary(uid) and is_binary(loaded.google_uid) and loaded.google_uid == uid),
+         true <- DateTime.diff(DateTime.utc_now(), loaded.inserted_at, :minute) <= 5 do
+      loaded
+      |> Comment.changeset(%{deleted_at: DateTime.utc_now(), body: "[deleted]"})
+      |> Repo.update()
+    else
+      nil -> {:error, :not_found}
+      false -> {:error, :forbidden}
+    end
+  end
+
+  def soft_delete_overlay_highlight_comment(_post_id, _comment_id, _session_id, _google_uid),
+    do: {:error, :not_found}
+
+  def update_overlay_highlight_comment(post_id, highlight_key, attrs)
+      when is_integer(post_id) and is_binary(highlight_key) and is_map(attrs) do
+    key = highlight_key |> String.trim() |> String.slice(0, 80)
+    comment = normalize_overlay_comment(attrs["comment"] || attrs[:comment])
+
+    if key == "" do
+      {:error, :invalid_overlay_highlight}
+    else
+      case Repo.get_by(OverlayHighlight, post_id: post_id, highlight_key: key) do
+        nil ->
+          {:error, :not_found}
+
+        %OverlayHighlight{} = highlight ->
+          highlight
+          |> OverlayHighlight.changeset(%{comment: comment})
+          |> Repo.update()
+      end
+    end
+  end
+
+  def update_overlay_highlight_comment(_post_id, _highlight_key, _attrs),
+    do: {:error, :invalid_overlay_highlight}
+
   def replace_overlay_highlights(post_id, attrs)
       when is_integer(post_id) and is_map(attrs) do
     session_id = attrs["session_id"] || attrs[:session_id]

@@ -2326,7 +2326,8 @@ a {
 }
 
 #embed-highlight-comment-meta,
-#embed-highlight-comment-readonly,
+#embed-highlight-comments-list,
+#embed-highlight-comments-list p,
 #embed-highlight-comment-editor label {
   color: #f8fafc !important;
 }
@@ -2363,10 +2364,10 @@ a {
 #room-detail #dislike-button,
 #room-detail #room-view-count,
 #room-detail #embed-highlight-mode-toggle,
-#room-detail #embed-highlight-clear,
 #room-detail #embed-highlight-count,
 #room-detail #embed-highlight-comment-close,
-#room-detail #embed-highlight-comment-save {
+#room-detail #embed-highlight-comment-save,
+#room-detail #embed-highlight-delete {
   border: 0 !important;
   border-radius: 0 !important;
   background: transparent !important;
@@ -2393,9 +2394,9 @@ a {
 #room-detail #like-button:not(:disabled):hover,
 #room-detail #dislike-button:not(:disabled):hover,
 #room-detail #embed-highlight-mode-toggle:not(:disabled):hover,
-#room-detail #embed-highlight-clear:not(:disabled):hover,
 #room-detail #embed-highlight-comment-close:not(:disabled):hover,
-#room-detail #embed-highlight-comment-save:not(:disabled):hover {
+#room-detail #embed-highlight-comment-save:not(:disabled):hover,
+#room-detail #embed-highlight-delete:not(:disabled):hover {
   background: rgb(255 255 255 / 12%) !important;
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 28%) !important;
   color: #ffffff !important;
@@ -2403,13 +2404,13 @@ a {
 
 #room-detail #like-button:not(:disabled):hover,
 #room-detail #embed-highlight-mode-toggle:not(:disabled):hover,
-#room-detail #embed-highlight-clear:not(:disabled):hover,
 #room-detail #embed-highlight-comment-save:not(:disabled):hover {
   border-color: rgb(45 212 191 / 56%) !important;
 }
 
 #room-detail #dislike-button:not(:disabled):hover,
-#room-detail #embed-highlight-comment-close:not(:disabled):hover {
+#room-detail #embed-highlight-comment-close:not(:disabled):hover,
+#room-detail #embed-highlight-delete:not(:disabled):hover {
   border-color: rgb(251 113 133 / 56%) !important;
 }
 

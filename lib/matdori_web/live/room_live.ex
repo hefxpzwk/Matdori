@@ -37,6 +37,7 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:room_comments, [])
       |> assign(:room_comment_form, empty_room_comment_form())
       |> assign(:overlay_highlights, [])
+      |> assign(:overlay_highlight_comments, [])
       |> assign(:selected_highlight_id, nil)
       |> assign(:like_count, 0)
       |> assign(:dislike_count, 0)
@@ -136,14 +137,16 @@ defmodule MatdoriWeb.RoomLive do
             Map.put(meta, :overlay_highlight_draft, nil)
           end)
 
+          overlay_highlight_comments =
+            Collab.list_overlay_highlight_comments(socket.assigns.post.id)
+
           broadcast_overlay_highlights(socket.assigns.post.id)
 
           {:noreply,
            socket
            |> assign(:overlay_highlights, overlay_highlights)
-           |> push_event("overlay_highlights_state", %{
-             highlights: overlay_highlights_payload(overlay_highlights)
-           })}
+           |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+           |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
 
         {:error, _reason} ->
           {:noreply, socket}
@@ -170,6 +173,78 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   def handle_event("overlay_highlight_draft", _params, socket), do: {:noreply, socket}
+
+  def handle_event("overlay_highlight_comment_create", params, socket) do
+    highlight_id = params["highlight_id"] || ""
+    body = params["body"] || ""
+
+    with true <- socket.assigns.authenticated,
+         :ok <-
+           RateLimiter.allow?(
+             socket.assigns.session_id,
+             :overlay_highlight_comment_create,
+             @action_limit,
+             :second
+           ),
+         %{id: post_id} <- socket.assigns.post,
+         {:ok, _} <-
+           Collab.create_overlay_highlight_comment(post_id, highlight_id, %{
+             "session_id" => socket.assigns.session_id,
+             "google_uid" => socket.assigns.google_uid,
+             "display_name" => socket.assigns.display_name,
+             "color" => socket.assigns.color,
+             "body" => body
+           }) do
+      overlay_highlights = Collab.list_overlay_highlights(post_id)
+      overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
+      broadcast_overlay_highlights(post_id)
+
+      {:noreply,
+       socket
+       |> assign(:overlay_highlights, overlay_highlights)
+       |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+       |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("overlay_highlight_comment_delete", %{"comment_id" => id}, socket) do
+    case Integer.parse(id || "") do
+      {parsed_id, ""} ->
+        with true <- socket.assigns.authenticated,
+             :ok <-
+               RateLimiter.allow?(
+                 socket.assigns.session_id,
+                 :overlay_highlight_comment_delete,
+                 @action_limit,
+                 :second
+               ),
+             %{id: post_id} <- socket.assigns.post,
+             {:ok, _} <-
+               Collab.soft_delete_overlay_highlight_comment(
+                 post_id,
+                 parsed_id,
+                 socket.assigns.session_id,
+                 socket.assigns.google_uid
+               ) do
+          overlay_highlights = Collab.list_overlay_highlights(post_id)
+          overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
+          broadcast_overlay_highlights(post_id)
+
+          {:noreply,
+           socket
+           |> assign(:overlay_highlights, overlay_highlights)
+           |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+           |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
+        else
+          _ -> {:noreply, socket}
+        end
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
 
   def handle_event("select_highlight", %{"highlight_id" => id}, socket) do
     case Integer.parse(id) do
@@ -428,13 +503,13 @@ defmodule MatdoriWeb.RoomLive do
   def handle_info({:overlay_highlights_updated, post_id}, socket) do
     if socket.assigns.post && socket.assigns.post.id == post_id do
       overlay_highlights = Collab.list_overlay_highlights(post_id)
+      overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
 
       {:noreply,
        socket
        |> assign(:overlay_highlights, overlay_highlights)
-       |> push_event("overlay_highlights_state", %{
-         highlights: overlay_highlights_payload(overlay_highlights)
-       })}
+       |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+       |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
     else
       {:noreply, socket}
     end
@@ -636,7 +711,7 @@ defmodule MatdoriWeb.RoomLive do
 
                           <div
                             id="embed-highlight-comment-panel"
-                            class="pointer-events-auto absolute z-30 hidden w-72 space-y-2 rounded-xl border border-slate-300 bg-white/97 p-3 shadow-xl backdrop-blur-sm"
+                            class="pointer-events-auto absolute z-30 hidden w-[26rem] space-y-3 rounded-xl border border-slate-300 bg-white/97 p-4 shadow-xl backdrop-blur-sm"
                           >
                             <div
                               id="embed-highlight-comment-pointer"
@@ -660,12 +735,12 @@ defmodule MatdoriWeb.RoomLive do
                               </button>
                             </div>
 
-                            <p
-                              id="embed-highlight-comment-readonly"
-                              class="text-sm leading-relaxed text-slate-800"
+                            <div
+                              id="embed-highlight-comments-list"
+                              class="max-h-52 space-y-2 overflow-y-auto pr-1"
                             >
-                              No comments yet.
-                            </p>
+                              <p class="text-sm text-slate-500">No comments yet.</p>
+                            </div>
 
                             <div id="embed-highlight-comment-editor" class="hidden space-y-2">
                               <label
@@ -674,20 +749,29 @@ defmodule MatdoriWeb.RoomLive do
                               >
                                 Comment on this highlight
                               </label>
-                              <textarea
-                                id="embed-highlight-comment-input"
-                                rows="3"
-                                maxlength="240"
-                                class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-teal-400"
-                                placeholder="Share what this highlight means"
-                              ></textarea>
-                              <div class="flex items-center justify-end gap-2">
+                              <div class="flex items-center gap-2">
+                                <input
+                                  id="embed-highlight-comment-input"
+                                  type="text"
+                                  maxlength="240"
+                                  class="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-teal-400"
+                                  placeholder="Share what this highlight means"
+                                />
                                 <button
                                   id="embed-highlight-comment-save"
                                   type="button"
-                                  class="inline-flex items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
+                                  class="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-teal-300 bg-teal-50 px-3 text-xs font-semibold text-teal-700 transition hover:bg-teal-100"
                                 >
-                                  <.icon name="hero-check" class="h-3.5 w-3.5" /> Save Comment
+                                  <.icon name="hero-paper-airplane" class="h-3.5 w-3.5" /> Send
+                                </button>
+                              </div>
+                              <div class="flex justify-end">
+                                <button
+                                  id="embed-highlight-delete"
+                                  type="button"
+                                  class="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                                >
+                                  <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete Highlight
                                 </button>
                               </div>
                             </div>
@@ -700,14 +784,14 @@ defmodule MatdoriWeb.RoomLive do
                             data-readonly={!@authenticated}
                             data-stage-selector="#room-embed-content"
                             data-toggle-selector="#embed-highlight-mode-toggle"
-                            data-clear-selector="#embed-highlight-clear"
                             data-count-selector="#embed-highlight-count"
                             data-comment-panel-selector="#embed-highlight-comment-panel"
                             data-comment-meta-selector="#embed-highlight-comment-meta"
-                            data-comment-readonly-selector="#embed-highlight-comment-readonly"
+                            data-comment-list-selector="#embed-highlight-comments-list"
                             data-comment-editor-selector="#embed-highlight-comment-editor"
                             data-comment-input-selector="#embed-highlight-comment-input"
                             data-comment-save-selector="#embed-highlight-comment-save"
+                            data-highlight-delete-selector="#embed-highlight-delete"
                             data-comment-close-selector="#embed-highlight-comment-close"
                             data-comment-pointer-selector="#embed-highlight-comment-pointer"
                             data-session-id={@session_id}
@@ -778,37 +862,30 @@ defmodule MatdoriWeb.RoomLive do
                   >
                     Views {@view_count}
                   </span>
-                </div>
 
-                <div
-                  :if={!@post.hidden}
-                  id="embed-highlight-controls"
-                  class="flex w-full flex-wrap items-center justify-start gap-2 lg:flex-col lg:items-stretch"
-                >
-                  <button
-                    id="embed-highlight-mode-toggle"
-                    type="button"
-                    data-highlight-overlay-toggle
-                    disabled={!@authenticated}
-                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 lg:w-full"
+                  <div
+                    :if={!@post.hidden}
+                    id="embed-highlight-controls"
+                    class="inline-flex shrink-0 items-center gap-1.5"
                   >
-                    <.icon name="hero-pencil-square" class="h-4 w-4" /> Highlight Select Mode
-                  </button>
-                  <button
-                    id="embed-highlight-clear"
-                    type="button"
-                    data-highlight-overlay-clear
-                    disabled={!@authenticated}
-                    class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 lg:w-full"
-                  >
-                    <.icon name="hero-trash" class="h-4 w-4" /> Clear Selection
-                  </button>
-                  <span
-                    id="embed-highlight-count"
-                    class="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 lg:w-full lg:justify-between"
-                  >
-                    0 selected
-                  </span>
+                    <button
+                      id="embed-highlight-mode-toggle"
+                      type="button"
+                      data-highlight-overlay-toggle
+                      disabled={!@authenticated}
+                      aria-pressed="false"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
+                    >
+                      <.icon name="hero-pencil-square" class="h-3.5 w-3.5" /> Highlight
+                      <span id="embed-highlight-mode-state">OFF</span>
+                    </button>
+                    <span
+                      id="embed-highlight-count"
+                      class="inline-flex shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700"
+                    >
+                      0 selected
+                    </span>
+                  </div>
                 </div>
               </aside>
             </div>
@@ -905,14 +982,14 @@ defmodule MatdoriWeb.RoomLive do
                     </time>
                   </div>
 
-                  <div class="mt-2 grid grid-cols-[2.25rem_minmax(0,1fr)] items-start">
-                    <div class="relative h-0">
-                      <span class="absolute left-[0.875rem] -top-4 h-4 w-px bg-slate-300"></span>
-                      <span class="absolute left-[0.875rem] top-0 h-px w-[1.375rem] bg-slate-300">
-                      </span>
-                    </div>
+                  <div class="mt-1 grid grid-cols-[2.25rem_minmax(0,1fr)] items-start gap-x-1">
+                    <span class="inline-flex h-6 items-start justify-end pr-1 pt-0.5 text-sm font-semibold leading-none text-slate-400 select-none">
+                      ㄴ
+                    </span>
 
-                    <p class="break-words text-sm leading-relaxed text-slate-800">{comment.body}</p>
+                    <p class="break-words pt-0.5 text-sm leading-relaxed text-slate-800">
+                      {comment.body}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -947,6 +1024,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:room_comments, [])
         |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, [])
+        |> assign(:overlay_highlight_comments, [])
         |> assign(:like_count, 0)
         |> assign(:dislike_count, 0)
         |> assign(:view_count, 0)
@@ -968,6 +1046,7 @@ defmodule MatdoriWeb.RoomLive do
         highlights = if active_snapshot, do: Collab.list_highlights(active_snapshot.id), else: []
         room_comments = Collab.list_room_comments(post.id)
         overlay_highlights = Collab.list_overlay_highlights(post.id)
+        overlay_highlight_comments = Collab.list_overlay_highlight_comments(post.id)
 
         socket =
           socket
@@ -987,6 +1066,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:room_comments, room_comments)
         |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, overlay_highlights)
+        |> assign(:overlay_highlight_comments, overlay_highlight_comments)
         |> assign(
           :segments,
           build_segments((active_snapshot && active_snapshot.normalized_text) || "", highlights)
@@ -997,9 +1077,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:liked, Collab.reacted_by?(post.id, socket.assigns.session_id, "like"))
         |> assign(:disliked, Collab.reacted_by?(post.id, socket.assigns.session_id, "dislike"))
         |> assign(:presence_members, presence_members_from_presences(presences))
-        |> push_event("overlay_highlights_state", %{
-          highlights: overlay_highlights_payload(overlay_highlights)
-        })
+        |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)
         |> push_event("presence_state", %{presences: presences, me: socket.assigns.session_id})
     end
   end
@@ -1572,6 +1650,16 @@ defmodule MatdoriWeb.RoomLive do
 
   defp broadcast_overlay_highlights(_post_id), do: :ok
 
+  defp push_overlay_highlight_states(socket, overlay_highlights, overlay_highlight_comments) do
+    socket
+    |> push_event("overlay_highlights_state", %{
+      highlights: overlay_highlights_payload(overlay_highlights)
+    })
+    |> push_event("overlay_highlight_comments_state", %{
+      comments: overlay_highlight_comments_payload(overlay_highlight_comments)
+    })
+  end
+
   defp overlay_highlights_payload(highlights) when is_list(highlights) do
     Enum.map(highlights, fn highlight ->
       %{
@@ -1589,6 +1677,26 @@ defmodule MatdoriWeb.RoomLive do
   end
 
   defp overlay_highlights_payload(_), do: []
+
+  defp overlay_highlight_comments_payload(comments) when is_list(comments) do
+    Enum.map(comments, fn comment ->
+      %{
+        id: comment.id,
+        highlight_id: comment.highlight_id,
+        session_id: comment.session_id,
+        display_name: comment.display_name,
+        color: comment.color,
+        body: comment.body,
+        inserted_at:
+          case comment.inserted_at do
+            %DateTime{} = inserted_at -> DateTime.to_iso8601(inserted_at)
+            _ -> nil
+          end
+      }
+    end)
+  end
+
+  defp overlay_highlight_comments_payload(_), do: []
 
   defp room_topic(post_id), do: "room:#{post_id}"
   defp presence_topic(post_id), do: "presence:#{post_id}"

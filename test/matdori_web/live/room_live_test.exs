@@ -95,12 +95,15 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#room-embed-status")
     assert has_element?(view, "#room-view-count", "Views 1")
     assert has_element?(view, "#embed-highlight-mode-toggle")
-    assert has_element?(view, "#embed-highlight-clear")
+    assert has_element?(view, "#embed-highlight-mode-state", "OFF")
+    refute has_element?(view, "#embed-highlight-clear")
     assert has_element?(view, "#embed-highlight-count", "0 selected")
     assert has_element?(view, "#embed-highlight-comment-panel.hidden")
     assert has_element?(view, "#embed-highlight-comment-pointer")
+    assert has_element?(view, "#embed-highlight-comments-list")
     assert has_element?(view, "#embed-highlight-comment-input")
     assert has_element?(view, "#embed-highlight-comment-save")
+    assert has_element?(view, "#embed-highlight-delete")
     assert has_element?(view, "#room-embed-center-rail")
     assert has_element?(view, "#room-embed-content")
     assert has_element?(view, "#room-embed-highlight-overlay[phx-hook='EmbedHighlightOverlay']")
@@ -277,7 +280,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     conn_b = google_auth_conn(conn, %{"session_id" => "overlay-session-b"})
 
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
-    {:ok, _view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
+    {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
 
     render_hook(view_a, "overlay_highlight_draft", %{
       "zone" => %{"left" => 0.12, "top" => 0.22, "width" => 0.2, "height" => 0.15}
@@ -312,6 +315,14 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert zone.height == 0.3
     assert zone.highlight_key == "mine-1"
     assert zone.comment == "여기에 코멘트"
+
+    render_hook(view_b, "overlay_highlight_comment_create", %{
+      "highlight_id" => "mine-1",
+      "body" => "다른 사용자 코멘트"
+    })
+
+    assert [%{highlight_id: "mine-1", body: "다른 사용자 코멘트", session_id: "overlay-session-b"}] =
+             Collab.list_overlay_highlight_comments(post.id)
 
     assert %{"overlay-session-a" => %{metas: [meta | _]}} = Presence.list("presence:#{post.id}")
     assert is_nil(meta.overlay_highlight_draft)

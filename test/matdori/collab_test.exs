@@ -228,6 +228,128 @@ defmodule Matdori.CollabTest do
     refute Enum.any?(remaining, &(&1.session_id == "session-overlay-a"))
   end
 
+  test "update_overlay_highlight_comment/3 updates existing highlight comment" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-overlay-a",
+               display_name: "Alice",
+               color: "#111111",
+               highlights: [
+                 %{
+                   "id" => "a-1",
+                   "left" => 0.1,
+                   "top" => 0.1,
+                   "width" => 0.2,
+                   "height" => 0.2,
+                   "comment" => "초기 코멘트"
+                 }
+               ]
+             })
+
+    assert {:ok, updated} =
+             Collab.update_overlay_highlight_comment(post.id, "a-1", %{comment: "업데이트됨"})
+
+    assert updated.highlight_key == "a-1"
+    assert updated.comment == "업데이트됨"
+
+    assert [%{highlight_key: "a-1", comment: "업데이트됨"}] =
+             Collab.list_overlay_highlights(post.id)
+  end
+
+  test "overlay highlight comments support multiple users and delete own comment" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "overlay-owner",
+               display_name: "Owner",
+               color: "#111111",
+               highlights: [
+                 %{"id" => "a-1", "left" => 0.1, "top" => 0.1, "width" => 0.2, "height" => 0.2}
+               ]
+             })
+
+    assert {:ok, first_comment} =
+             Collab.create_overlay_highlight_comment(post.id, "a-1", %{
+               "session_id" => "overlay-owner",
+               "google_uid" => "owner-uid",
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "body" => "첫 댓글"
+             })
+
+    assert {:ok, second_comment} =
+             Collab.create_overlay_highlight_comment(post.id, "a-1", %{
+               "session_id" => "overlay-third",
+               "google_uid" => "third-uid",
+               "display_name" => "Third",
+               "color" => "#222222",
+               "body" => "세번째 사용자 댓글"
+             })
+
+    comments = Collab.list_overlay_highlight_comments(post.id)
+
+    assert Enum.count(comments, &(&1.highlight_id == "a-1")) == 2
+    assert Enum.any?(comments, &(&1.id == first_comment.id and &1.body == "첫 댓글"))
+    assert Enum.any?(comments, &(&1.id == second_comment.id and &1.body == "세번째 사용자 댓글"))
+
+    assert {:error, :forbidden} =
+             Collab.soft_delete_overlay_highlight_comment(
+               post.id,
+               first_comment.id,
+               "overlay-third",
+               "third-uid"
+             )
+
+    assert {:ok, _} =
+             Collab.soft_delete_overlay_highlight_comment(
+               post.id,
+               first_comment.id,
+               "overlay-owner",
+               "owner-uid"
+             )
+
+    remaining = Collab.list_overlay_highlight_comments(post.id)
+    assert Enum.count(remaining, &(&1.highlight_id == "a-1")) == 1
+    assert Enum.any?(remaining, &(&1.id == second_comment.id))
+  end
+
+  test "overlay highlight comment delete allows same google_uid from another session" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "overlay-owner-a",
+               google_uid: "owner-uid",
+               display_name: "Owner",
+               color: "#111111",
+               highlights: [
+                 %{"id" => "a-1", "left" => 0.1, "top" => 0.1, "width" => 0.2, "height" => 0.2}
+               ]
+             })
+
+    assert {:ok, comment} =
+             Collab.create_overlay_highlight_comment(post.id, "a-1", %{
+               "session_id" => "overlay-owner-a",
+               "google_uid" => "owner-uid",
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "body" => "삭제 예정 댓글"
+             })
+
+    assert {:ok, _} =
+             Collab.soft_delete_overlay_highlight_comment(
+               post.id,
+               comment.id,
+               "overlay-owner-b",
+               "owner-uid"
+             )
+
+    assert Collab.list_overlay_highlight_comments(post.id) == []
+  end
+
   test "upsert_profile_by_google_uid/2 syncs display_name to authored artifacts" do
     post = insert_post_with_snapshot()
     snapshot = Repo.preload(post, :current_snapshot).current_snapshot
