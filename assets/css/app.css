@@ -1309,7 +1309,9 @@ select:focus-visible {
 .x-global-header {
   position: sticky;
   top: 0;
-  z-index: 35;
+  z-index: 400;
+  overflow: visible;
+  isolation: isolate;
   border-bottom: 1px solid rgb(148 163 184 / 28%);
   background:
     linear-gradient(124deg, #0f172a 0%, #111827 52%, #111111 100%);
@@ -1318,6 +1320,8 @@ select:focus-visible {
 .x-global-head-inner {
   min-height: 4.05rem;
   padding: 0.5rem var(--x-gutter);
+  position: relative;
+  z-index: 410;
   display: flex;
   align-items: center;
   gap: 0.52rem;
@@ -1387,6 +1391,8 @@ select:focus-visible {
 
 .x-top-actions {
   margin-left: auto;
+  position: relative;
+  z-index: 420;
   display: flex;
   align-items: center;
   gap: 0.45rem;
@@ -1436,6 +1442,8 @@ select:focus-visible {
 
 .x-top-profile-wrap {
   position: relative;
+  z-index: 430;
+  isolation: isolate;
   min-width: 0;
   max-width: 100%;
 }
@@ -1512,15 +1520,20 @@ select:focus-visible {
 
 .x-profile-menu {
   position: absolute;
+  left: auto;
   right: 0;
   top: calc(100% + 0.42rem);
+  bottom: auto;
+  width: max-content;
   min-width: 11.2rem;
+  max-width: min(88vw, 18rem);
   border: 1px solid rgb(15 23 42 / 14%);
   border-radius: 0.95rem;
   background: #ffffff;
   box-shadow: 0 14px 28px rgb(15 23 42 / 17%);
   padding: 0.34rem;
-  z-index: 120;
+  z-index: 500;
+  transform-origin: top right;
 }
 
 .x-profile-menu-item {
@@ -1587,6 +1600,8 @@ select:focus-visible {
 }
 
 .x-page-content {
+  position: relative;
+  z-index: 1;
   padding: 1.05rem var(--x-gutter) 1.9rem;
   flex: 1 0 auto;
   min-height: auto;
