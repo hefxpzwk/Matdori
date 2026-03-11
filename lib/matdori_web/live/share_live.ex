@@ -297,7 +297,7 @@ defmodule MatdoriWeb.ShareLive do
                   id="share-create-link-url"
                   field={@share_form[:tweet_url]}
                   type="url"
-                  class="x-compose-input"
+                  class="x-compose-link"
                   placeholder="Enter a link"
                   required
                 />
