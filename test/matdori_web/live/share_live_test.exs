@@ -95,6 +95,83 @@ defmodule MatdoriWeb.ShareLiveTest do
              html_position(live_html, ~s(id="share-feed-item-#{second.id}"))
   end
 
+  test "topbar trending links to most active room when active rooms exist", %{conn: conn} do
+    conn = google_auth_conn(conn)
+
+    first_id = Integer.to_string(System.unique_integer([:positive]))
+    second_id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, first} =
+             Collab.share_post(
+               %{
+                 "title" => "trend-active-first",
+                 "tweet_url" => "https://x.com/trend_active/status/#{first_id}"
+               },
+               "trend-active-first"
+             )
+
+    assert {:ok, second} =
+             Collab.share_post(
+               %{
+                 "title" => "trend-active-second",
+                 "tweet_url" => "https://x.com/trend_active/status/#{second_id}"
+               },
+               "trend-active-second"
+             )
+
+    assert {:ok, _meta} =
+             Presence.track(self(), "presence:#{first.id}", "trend-first-1", %{
+               display_name: "user-1"
+             })
+
+    assert {:ok, _meta} =
+             Presence.track(self(), "presence:#{second.id}", "trend-second-1", %{
+               display_name: "user-2"
+             })
+
+    assert {:ok, _meta} =
+             Presence.track(self(), "presence:#{second.id}", "trend-second-2", %{
+               display_name: "user-3"
+             })
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "a.x-top-nav-item[href='/rooms/#{second.id}']", "Trending")
+  end
+
+  test "topbar trending links to most viewed room when no active rooms exist", %{conn: conn} do
+    conn = google_auth_conn(conn)
+
+    low_id = Integer.to_string(System.unique_integer([:positive]))
+    high_id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, low_views} =
+             Collab.share_post(
+               %{
+                 "title" => "trend-views-low",
+                 "tweet_url" => "https://x.com/trend_views/status/#{low_id}"
+               },
+               "trend-views-low"
+             )
+
+    assert {:ok, high_views} =
+             Collab.share_post(
+               %{
+                 "title" => "trend-views-high",
+                 "tweet_url" => "https://x.com/trend_views/status/#{high_id}"
+               },
+               "trend-views-high"
+             )
+
+    assert :ok = Collab.register_view(high_views.id, "trend-views-1")
+    assert :ok = Collab.register_view(high_views.id, "trend-views-2")
+    assert :ok = Collab.register_view(low_views.id, "trend-views-3")
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "a.x-top-nav-item[href='/rooms/#{high_views.id}']", "Trending")
+  end
+
   test "create query param opens centered create modal", %{conn: conn} do
     conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/?create=1")
@@ -141,7 +218,7 @@ defmodule MatdoriWeb.ShareLiveTest do
     assert render(view) =~ "Please enter a link."
   end
 
-  test "users can switch to create mode and create new room", %{conn: conn} do
+  test "searching unknown link shows info and keeps search button", %{conn: conn} do
     conn = google_auth_conn(conn)
     {:ok, view, _html} = live(conn, ~p"/")
     id = Integer.to_string(System.unique_integer([:positive]))
@@ -156,18 +233,19 @@ defmodule MatdoriWeb.ShareLiveTest do
       )
       |> render_submit()
 
-    assert has_element?(view, "#share-room-start-create")
-    refute has_element?(view, "#share-room-search")
-    refute has_element?(view, "#share-title")
+    assert render(view) =~ "No room found for this link."
+    assert has_element?(view, "#share-room-search")
+    refute has_element?(view, "#share-room-start-create")
+  end
 
-    _html =
-      view
-      |> element("#share-room-start-create")
-      |> render_click()
+  test "users can create new room from create modal", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    {:ok, view, _html} = live(conn, ~p"/?create=1")
+    id = Integer.to_string(System.unique_integer([:positive]))
+    url = "https://x.com/community_user/status/#{id}"
 
-    assert has_element?(view, "#share-title")
+    assert has_element?(view, "#share-create-form")
     assert has_element?(view, "#share-room-submit")
-    refute has_element?(view, "#share-room-search")
 
     assert {:error, {:live_redirect, %{to: to}}} =
              view
@@ -188,22 +266,8 @@ defmodule MatdoriWeb.ShareLiveTest do
 
   test "users can create room from generic web link", %{conn: conn} do
     conn = google_auth_conn(conn)
-    {:ok, view, _html} = live(conn, ~p"/")
+    {:ok, view, _html} = live(conn, ~p"/?create=1")
     url = "https://example.com/articles/notion-like-embed"
-
-    _html =
-      view
-      |> form("#share-room-form",
-        share: %{
-          tweet_url: url
-        }
-      )
-      |> render_submit()
-
-    _html =
-      view
-      |> element("#share-room-start-create")
-      |> render_click()
 
     assert {:error, {:live_redirect, %{to: to}}} =
              view
@@ -224,23 +288,9 @@ defmodule MatdoriWeb.ShareLiveTest do
 
   test "title is required when creating room", %{conn: conn} do
     conn = google_auth_conn(conn)
-    {:ok, view, _html} = live(conn, ~p"/")
+    {:ok, view, _html} = live(conn, ~p"/?create=1")
     id = Integer.to_string(System.unique_integer([:positive]))
     url = "https://x.com/community_user/status/#{id}"
-
-    _html =
-      view
-      |> form("#share-room-form",
-        share: %{
-          tweet_url: url
-        }
-      )
-      |> render_submit()
-
-    _html =
-      view
-      |> element("#share-room-start-create")
-      |> render_click()
 
     _html =
       view
@@ -279,26 +329,7 @@ defmodule MatdoriWeb.ShareLiveTest do
     {:ok, post} =
       Collab.share_post(%{"title" => "existing-room", "tweet_url" => existing_url}, "seed-dup")
 
-    new_id = Integer.to_string(System.unique_integer([:positive]))
-    new_url = "https://x.com/community_user/status/#{new_id}"
-
-    {:ok, view, _html} = live(conn, ~p"/")
-
-    _html =
-      view
-      |> form("#share-room-form",
-        share: %{
-          tweet_url: new_url
-        }
-      )
-      |> render_submit()
-
-    assert has_element?(view, "#share-room-start-create")
-
-    _html =
-      view
-      |> element("#share-room-start-create")
-      |> render_click()
+    {:ok, view, _html} = live(conn, ~p"/?create=1")
 
     assert {:error, {:live_redirect, %{to: to}}} =
              view

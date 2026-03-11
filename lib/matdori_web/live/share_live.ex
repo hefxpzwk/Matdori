@@ -82,8 +82,8 @@ defmodule MatdoriWeb.ShareLive do
              socket
              |> assign(:share_form, share_form(params))
              |> assign(:composer_mode, :search)
-             |> assign(:search_status, :not_found)
-             |> put_flash(:info, "No existing room found. You can create a new one.")}
+             |> assign(:search_status, :idle)
+             |> put_flash(:info, "No room found for this link.")}
 
           {:error, :invalid_tweet_url} ->
             {:noreply,
@@ -121,7 +121,7 @@ defmodule MatdoriWeb.ShareLive do
     {:noreply,
      socket
      |> assign(:composer_mode, :search)
-     |> assign(:search_status, :not_found)}
+     |> assign(:search_status, :idle)}
   end
 
   @impl true
@@ -250,22 +250,11 @@ defmodule MatdoriWeb.ShareLive do
 
               <div class="x-compose-cta-row">
                 <button
-                  :if={@search_status != :not_found}
                   id="share-room-search"
                   type="submit"
                   class="mat-btn-secondary"
                 >
                   Search
-                </button>
-
-                <button
-                  :if={@search_status == :not_found}
-                  id="share-room-start-create"
-                  type="button"
-                  phx-click="start_create"
-                  class="mat-btn-primary"
-                >
-                  Create New Room
                 </button>
               </div>
             </div>

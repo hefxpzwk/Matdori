@@ -5,6 +5,9 @@ defmodule MatdoriWeb.Layouts do
   """
   use MatdoriWeb, :html
 
+  alias Matdori.Collab
+  alias MatdoriWeb.Presence
+
   # Embed all files in layouts/* within this module.
   # The default root.html.heex file contains the HTML
   # skeleton of your application, namely HTML headers
@@ -48,6 +51,7 @@ defmodule MatdoriWeb.Layouts do
       |> assign(:topbar_mode, topbar_mode(assigns[:topbar]))
       |> assign(:topbar_title, topbar_title(assigns[:topbar]))
       |> assign(:topbar_refresh_event, topbar_refresh_event(assigns[:topbar]))
+      |> assign(:trending_path, trending_path())
 
     ~H"""
     <div class="mat-shell min-h-screen" style={"--mat-accent: #{@accent_color};"}>
@@ -65,11 +69,7 @@ defmodule MatdoriWeb.Layouts do
                     <.icon name="hero-home-solid" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Home</span>
                   </a>
-                  <a href={~p"/rooms"} class="x-top-nav-item">
-                    <.icon name="hero-magnifying-glass" class="size-6 x-top-nav-icon" />
-                    <span class="x-top-nav-text">Explore</span>
-                  </a>
-                  <a href={~p"/rooms"} class="x-top-nav-item">
+                  <a href={@trending_path} class="x-top-nav-item">
                     <.icon name="hero-fire" class="size-6 x-top-nav-icon" />
                     <span class="x-top-nav-text">Trending</span>
                   </a>
@@ -283,4 +283,36 @@ defmodule MatdoriWeb.Layouts do
       "#3b82f6"
     end
   end
+
+  defp trending_path do
+    posts = Collab.list_posts(200, sort: "views")
+
+    case posts do
+      [] ->
+        ~p"/rooms"
+
+      [most_viewed | _] ->
+        {active_post, active_count} = most_active_post(posts)
+
+        if active_count > 0 do
+          ~p"/rooms/#{active_post.id}"
+        else
+          ~p"/rooms/#{most_viewed.id}"
+        end
+    end
+  end
+
+  defp most_active_post(posts) do
+    Enum.reduce(posts, {nil, 0}, fn post, {best_post, best_count} ->
+      current_count = post.id |> presence_topic() |> Presence.list() |> map_size()
+
+      if current_count > best_count do
+        {post, current_count}
+      else
+        {best_post, best_count}
+      end
+    end)
+  end
+
+  defp presence_topic(post_id), do: "presence:#{post_id}"
 end

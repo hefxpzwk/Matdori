@@ -303,6 +303,95 @@ defmodule Matdori.Collab do
 
   def list_liked_posts_by_google_uid(_google_uid, _limit), do: []
 
+  def list_active_posts_by_google_uid(google_uid, limit \\ 100)
+
+  def list_active_posts_by_google_uid(google_uid, limit)
+      when is_binary(google_uid) and is_integer(limit) and limit > 0 do
+    list_active_posts_for_user(google_uid, nil, limit)
+  end
+
+  def list_active_posts_by_google_uid(_google_uid, _limit), do: []
+
+  def list_active_posts_for_user(google_uid, session_id, limit \\ 100)
+
+  def list_active_posts_for_user(google_uid, session_id, limit)
+      when is_integer(limit) and limit > 0 do
+    uid = normalize_google_uid(google_uid)
+    sid = normalize_session_id(session_id)
+    highlight_owner_dynamic = highlight_owner_dynamic(uid, sid)
+    comment_owner_dynamic = comment_owner_dynamic(uid, sid)
+
+    if not is_nil(highlight_owner_dynamic) and not is_nil(comment_owner_dynamic) do
+      text_highlighted_posts_subquery =
+        from h in Highlight,
+          join: s in PostSnapshot,
+          on: s.id == h.post_snapshot_id,
+          where: ^highlight_owner_dynamic,
+          group_by: s.post_id,
+          select: %{post_id: s.post_id, latest_activity_at: max(h.inserted_at)}
+
+      overlay_highlighted_posts_subquery =
+        from h in OverlayHighlight,
+          where: ^highlight_owner_dynamic,
+          group_by: h.post_id,
+          select: %{post_id: h.post_id, latest_activity_at: max(h.inserted_at)}
+
+      room_commented_posts_subquery =
+        from c in Comment,
+          where:
+            ^dynamic(
+              [c],
+              ^comment_owner_dynamic and not is_nil(c.post_id) and is_nil(c.deleted_at)
+            ),
+          group_by: c.post_id,
+          select: %{post_id: c.post_id, latest_activity_at: max(c.inserted_at)}
+
+      text_highlight_commented_posts_subquery =
+        from c in Comment,
+          join: h in Highlight,
+          on: h.id == c.highlight_id,
+          join: s in PostSnapshot,
+          on: s.id == h.post_snapshot_id,
+          where: ^dynamic([c, _h, _s], ^comment_owner_dynamic and is_nil(c.deleted_at)),
+          group_by: s.post_id,
+          select: %{post_id: s.post_id, latest_activity_at: max(c.inserted_at)}
+
+      overlay_highlight_commented_posts_subquery =
+        from c in Comment,
+          join: h in OverlayHighlight,
+          on: h.id == c.overlay_highlight_id,
+          where: ^dynamic([c, _h], ^comment_owner_dynamic and is_nil(c.deleted_at)),
+          group_by: h.post_id,
+          select: %{post_id: h.post_id, latest_activity_at: max(c.inserted_at)}
+
+      activity_posts_union_subquery =
+        text_highlighted_posts_subquery
+        |> union_all(^overlay_highlighted_posts_subquery)
+        |> union_all(^room_commented_posts_subquery)
+        |> union_all(^text_highlight_commented_posts_subquery)
+        |> union_all(^overlay_highlight_commented_posts_subquery)
+
+      activity_posts_subquery =
+        from a in subquery(activity_posts_union_subquery),
+          group_by: a.post_id,
+          select: %{post_id: a.post_id, latest_activity_at: max(a.latest_activity_at)}
+
+      from(
+        p in Post,
+        join: activity in subquery(activity_posts_subquery),
+        on: activity.post_id == p.id,
+        where: p.hidden == false,
+        order_by: [desc: activity.latest_activity_at, desc: p.inserted_at, desc: p.id],
+        limit: ^limit
+      )
+      |> with_post_metrics()
+      |> Repo.all()
+      |> Repo.preload(:current_snapshot)
+    else
+      []
+    end
+  end
+
   def list_highlighted_posts_by_google_uid(google_uid, limit \\ 100)
 
   def list_highlighted_posts_by_google_uid(google_uid, limit)
@@ -1623,6 +1712,20 @@ defmodule Matdori.Collab do
   end
 
   defp highlight_owner_dynamic(_uid, _sid), do: nil
+
+  defp comment_owner_dynamic(uid, sid) when is_binary(uid) and is_binary(sid) do
+    dynamic([c], c.google_uid == ^uid or (is_nil(c.google_uid) and c.session_id == ^sid))
+  end
+
+  defp comment_owner_dynamic(uid, _sid) when is_binary(uid) do
+    dynamic([c], c.google_uid == ^uid)
+  end
+
+  defp comment_owner_dynamic(nil, sid) when is_binary(sid) do
+    dynamic([c], c.session_id == ^sid)
+  end
+
+  defp comment_owner_dynamic(_uid, _sid), do: nil
 
   defp normalize_share_tweet_url(url) when is_binary(url) do
     trimmed = String.trim(url)

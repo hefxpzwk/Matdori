@@ -81,7 +81,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-profile-interest")
     refute render(view) =~ "협업 리딩"
     assert has_element?(view, "#my-tab-created")
-    assert has_element?(view, "#my-tab-highlighted")
+    assert has_element?(view, "#my-tab-active")
     assert has_element?(view, "#my-tab-liked")
     assert has_element?(view, "#my-profile-edit-toggle")
     assert has_element?(view, "#my-profile-color")
@@ -95,20 +95,20 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-created-comment-count-#{created_post.id}")
     assert has_element?(view, "#my-created-delete-#{created_post.id}")
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
-    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    refute has_element?(view, "#my-active-room-#{highlighted_post.id}")
 
     _html = view |> element("#my-tab-liked") |> render_click()
     assert has_element?(view, "#my-liked-room-#{liked_post.id}")
     refute has_element?(view, "#my-created-room-#{created_post.id}")
 
-    _html = view |> element("#my-tab-highlighted") |> render_click()
-    assert has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
-    assert has_element?(view, "#my-highlighted-delete-#{highlighted_post.id}")
+    _html = view |> element("#my-tab-active") |> render_click()
+    assert has_element?(view, "#my-active-room-#{highlighted_post.id}")
+    assert has_element?(view, "#my-active-delete-#{highlighted_post.id}")
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
 
-    _html = view |> element("#my-highlighted-delete-#{highlighted_post.id}") |> render_click()
-    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
-    assert has_element?(view, "#my-highlighted-empty")
+    _html = view |> element("#my-active-delete-#{highlighted_post.id}") |> render_click()
+    refute has_element?(view, "#my-active-room-#{highlighted_post.id}")
+    assert has_element?(view, "#my-active-empty")
 
     _html = view |> element("#my-tab-created") |> render_click()
     assert has_element?(view, "#my-created-room-#{created_post.id}")
@@ -144,7 +144,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
 
     assert %{color: "#ef4444"} = Collab.get_profile_by_google_uid(google_uid)
 
-    refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
+    refute has_element?(view, "#my-active-room-#{highlighted_post.id}")
     assert has_element?(view, "#my-profile-name", "수정된 유저")
     assert has_element?(view, "#my-profile-interest", "AI · 디자인 시스템")
   end
@@ -206,7 +206,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-profile-color .my-profile-color-code", "#ef4444")
   end
 
-  test "my page includes overlay-highlighted rooms", %{conn: conn} do
+  test "my page includes overlay active rooms", %{conn: conn} do
     google_uid = "google-my-page-overlay-user"
     session_id = "my-page-overlay-session"
 
@@ -247,7 +247,7 @@ defmodule MatdoriWeb.MyPageLiveTest do
              })
 
     {:ok, view, _html} = live(conn, ~p"/me")
-    _html = view |> element("#my-tab-highlighted") |> render_click()
-    assert has_element?(view, "#my-highlighted-room-#{overlay_post.id}")
+    _html = view |> element("#my-tab-active") |> render_click()
+    assert has_element?(view, "#my-active-room-#{overlay_post.id}")
   end
 end

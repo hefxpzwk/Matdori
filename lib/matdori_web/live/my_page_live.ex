@@ -5,7 +5,7 @@ defmodule MatdoriWeb.MyPageLive do
   alias Matdori.Embed
   alias MatdoriWeb.Presence
 
-  @profile_tabs ~w(created highlighted liked)
+  @profile_tabs ~w(created active liked)
   @default_profile_color "#3b82f6"
   @profile_preset_colors [
     "#ef4444",
@@ -299,13 +299,13 @@ defmodule MatdoriWeb.MyPageLive do
               My Rooms
             </button>
             <button
-              id="my-tab-highlighted"
+              id="my-tab-active"
               type="button"
               phx-click="switch_profile_tab"
-              phx-value-tab="highlighted"
-              class={profile_tab_class(@active_tab == "highlighted")}
+              phx-value-tab="active"
+              class={profile_tab_class(@active_tab == "active")}
             >
-              Highlighted Rooms
+              Active Rooms
             </button>
             <button
               id="my-tab-liked"
@@ -436,19 +436,19 @@ defmodule MatdoriWeb.MyPageLive do
         </section>
 
         <section
-          :if={@active_tab == "highlighted"}
-          id="my-highlighted-rooms"
+          :if={@active_tab == "active"}
+          id="my-active-rooms"
           class="my-profile-content-panel px-0 py-6 sm:py-7"
         >
-          <h2 class="text-xl font-black tracking-tight text-white">Rooms I Highlighted</h2>
-          <%= if @highlighted_posts == [] do %>
-            <p id="my-highlighted-empty" class="my-profile-empty mt-3 text-sm text-slate-300">
-              No highlighted rooms.
+          <h2 class="text-xl font-black tracking-tight text-white">Rooms I Was Active In</h2>
+          <%= if @active_posts == [] do %>
+            <p id="my-active-empty" class="my-profile-empty mt-3 text-sm text-slate-300">
+              No active rooms.
             </p>
           <% else %>
             <.profile_room_grid
-              posts={@highlighted_posts}
-              id_prefix="my-highlighted"
+              posts={@active_posts}
+              id_prefix="my-active"
               active_counts={@active_counts}
               delete_event="delete_my_highlights"
             />
@@ -489,15 +489,15 @@ defmodule MatdoriWeb.MyPageLive do
     created_posts = Collab.list_created_posts_by_google_uid(socket.assigns.google_uid)
     liked_posts = Collab.list_liked_posts_by_google_uid(socket.assigns.google_uid)
 
-    highlighted_posts =
-      Collab.list_highlighted_posts_for_user(socket.assigns.google_uid, socket.assigns.session_id)
+    active_posts =
+      Collab.list_active_posts_for_user(socket.assigns.google_uid, socket.assigns.session_id)
 
-    active_counts = active_counts_map(created_posts ++ liked_posts ++ highlighted_posts)
+    active_counts = active_counts_map(created_posts ++ liked_posts ++ active_posts)
 
     socket
     |> assign(:created_posts, created_posts)
     |> assign(:liked_posts, liked_posts)
-    |> assign(:highlighted_posts, highlighted_posts)
+    |> assign(:active_posts, active_posts)
     |> assign(:active_counts, active_counts)
   end
 
