@@ -2,6 +2,7 @@ defmodule MatdoriWeb.MyPageLive do
   use MatdoriWeb, :live_view
 
   alias Matdori.Collab
+  alias Matdori.Embed
   alias MatdoriWeb.Presence
 
   @profile_tabs ~w(created highlighted liked)
@@ -425,97 +426,12 @@ defmodule MatdoriWeb.MyPageLive do
               No rooms created yet.
             </p>
           <% else %>
-            <div class="my-feed-list mt-4">
-              <%= for post <- @created_posts do %>
-                <article class="my-feed-card relative" id={"my-created-card-#{post.id}"}>
-                  <.link
-                    id={"my-created-room-#{post.id}"}
-                    navigate={~p"/rooms/#{post.id}"}
-                    class="absolute inset-0 z-10"
-                    aria-label={"Open #{display_title(post)}"}
-                  >
-                  </.link>
-
-                  <div class="my-feed-head">
-                    <div class="my-feed-author">
-                      <span class="my-feed-avatar">{author_initial(@display_name)}</span>
-                      <div class="my-feed-author-meta">
-                        <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "Profile"}</span>
-                          <span class="my-feed-dot">·</span>
-                          <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
-                        </p>
-                        <p class="my-feed-kind">Posted by me</p>
-                      </div>
-                    </div>
-
-                    <button
-                      id={"my-created-delete-#{post.id}"}
-                      type="button"
-                      phx-click="delete_created_post"
-                      phx-value-post_id={post.id}
-                      class="my-feed-delete-btn relative z-20"
-                    >
-                      <.icon name="hero-trash" class="size-3.5" />
-                    </button>
-                  </div>
-
-                  <div class="my-feed-card-body relative z-[1]">
-                    <p id={"my-created-room-title-#{post.id}"} class="my-feed-title">
-                      {og_preview_title(post)}
-                    </p>
-
-                    <div class="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
-                      <%= if preview_image_url(post) do %>
-                        <img
-                          src={preview_image_url(post)}
-                          alt={og_preview_title(post)}
-                          class="x-media-thumb h-20 w-full object-cover"
-                          loading="lazy"
-                          referrerpolicy="no-referrer"
-                        />
-                      <% else %>
-                        <div class="x-media-fallback h-20 p-2">
-                          <p class="line-clamp-1 text-xs font-bold text-slate-900">
-                            {og_preview_title(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[11px] text-slate-600">
-                            {og_preview_text(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[10px] text-slate-500">
-                            {og_preview_source(post)}
-                          </p>
-                        </div>
-                      <% end %>
-                    </div>
-
-                    <p class="my-feed-body line-clamp-2">{og_preview_text(post)}</p>
-
-                    <div class="my-feed-actions" aria-hidden="true">
-                      <span id={"my-created-like-count-#{post.id}"} class="my-feed-action is-accent">
-                        <.icon name="hero-hand-thumb-up" class="size-4" /> {post.like_count}
-                      </span>
-                      <span id={"my-created-dislike-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-hand-thumb-down" class="size-4" /> {post.dislike_count}
-                      </span>
-                      <span id={"my-created-view-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chart-bar" class="size-4" /> {post.view_count}
-                      </span>
-                      <span id={"my-created-live-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-signal" class="size-4" /> {Map.get(
-                          @active_counts,
-                          post.id,
-                          0
-                        )}
-                      </span>
-                      <span id={"my-created-comment-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chat-bubble-left-right" class="size-4" /> {post.comment_count}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              <% end %>
-            </div>
+            <.profile_room_grid
+              posts={@created_posts}
+              id_prefix="my-created"
+              active_counts={@active_counts}
+              delete_event="delete_created_post"
+            />
           <% end %>
         </section>
 
@@ -530,100 +446,12 @@ defmodule MatdoriWeb.MyPageLive do
               No highlighted rooms.
             </p>
           <% else %>
-            <div class="my-feed-list mt-4">
-              <%= for post <- @highlighted_posts do %>
-                <article class="my-feed-card relative" id={"my-highlighted-card-#{post.id}"}>
-                  <.link
-                    id={"my-highlighted-room-#{post.id}"}
-                    navigate={~p"/rooms/#{post.id}"}
-                    class="absolute inset-0 z-10"
-                    aria-label={"Open #{display_title(post)}"}
-                  >
-                  </.link>
-
-                  <div class="my-feed-head">
-                    <div class="my-feed-author">
-                      <span class="my-feed-avatar">{author_initial(@display_name)}</span>
-                      <div class="my-feed-author-meta">
-                        <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "Profile"}</span>
-                          <span class="my-feed-dot">·</span>
-                          <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
-                        </p>
-                        <p class="my-feed-kind">Highlighted by me</p>
-                      </div>
-                    </div>
-
-                    <button
-                      id={"my-highlighted-delete-#{post.id}"}
-                      type="button"
-                      phx-click="delete_my_highlights"
-                      phx-value-post_id={post.id}
-                      class="my-feed-delete-btn relative z-20"
-                    >
-                      <.icon name="hero-trash" class="size-3.5" />
-                    </button>
-                  </div>
-
-                  <div class="my-feed-card-body relative z-[1]">
-                    <p id={"my-highlighted-room-title-#{post.id}"} class="my-feed-title">
-                      {og_preview_title(post)}
-                    </p>
-
-                    <div class="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
-                      <%= if preview_image_url(post) do %>
-                        <img
-                          src={preview_image_url(post)}
-                          alt={og_preview_title(post)}
-                          class="x-media-thumb h-20 w-full object-cover"
-                          loading="lazy"
-                          referrerpolicy="no-referrer"
-                        />
-                      <% else %>
-                        <div class="x-media-fallback h-20 p-2">
-                          <p class="line-clamp-1 text-xs font-bold text-slate-900">
-                            {og_preview_title(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[11px] text-slate-600">
-                            {og_preview_text(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[10px] text-slate-500">
-                            {og_preview_source(post)}
-                          </p>
-                        </div>
-                      <% end %>
-                    </div>
-
-                    <p class="my-feed-body line-clamp-2">{og_preview_text(post)}</p>
-
-                    <div class="my-feed-actions" aria-hidden="true">
-                      <span
-                        id={"my-highlighted-like-count-#{post.id}"}
-                        class="my-feed-action is-accent"
-                      >
-                        <.icon name="hero-hand-thumb-up" class="size-4" /> {post.like_count}
-                      </span>
-                      <span id={"my-highlighted-dislike-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-hand-thumb-down" class="size-4" /> {post.dislike_count}
-                      </span>
-                      <span id={"my-highlighted-view-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chart-bar" class="size-4" /> {post.view_count}
-                      </span>
-                      <span id={"my-highlighted-live-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-signal" class="size-4" /> {Map.get(
-                          @active_counts,
-                          post.id,
-                          0
-                        )}
-                      </span>
-                      <span id={"my-highlighted-comment-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chat-bubble-left-right" class="size-4" /> {post.comment_count}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              <% end %>
-            </div>
+            <.profile_room_grid
+              posts={@highlighted_posts}
+              id_prefix="my-highlighted"
+              active_counts={@active_counts}
+              delete_event="delete_my_highlights"
+            />
           <% end %>
         </section>
 
@@ -638,87 +466,11 @@ defmodule MatdoriWeb.MyPageLive do
               No liked rooms.
             </p>
           <% else %>
-            <div class="my-feed-list mt-4">
-              <%= for post <- @liked_posts do %>
-                <article class="my-feed-card relative" id={"my-liked-card-#{post.id}"}>
-                  <.link
-                    id={"my-liked-room-#{post.id}"}
-                    navigate={~p"/rooms/#{post.id}"}
-                    class="absolute inset-0 z-10"
-                    aria-label={"Open #{display_title(post)}"}
-                  >
-                  </.link>
-
-                  <div class="my-feed-head">
-                    <div class="my-feed-author">
-                      <span class="my-feed-avatar">{author_initial(@display_name)}</span>
-                      <div class="my-feed-author-meta">
-                        <p class="my-feed-author-line">
-                          <span class="my-feed-name">{@display_name || "Profile"}</span>
-                          <span class="my-feed-dot">·</span>
-                          <span class="my-feed-date">{format_post_date(post.inserted_at)}</span>
-                        </p>
-                        <p class="my-feed-kind">Liked by me</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="my-feed-card-body relative z-[1]">
-                    <p id={"my-liked-room-title-#{post.id}"} class="my-feed-title">
-                      {og_preview_title(post)}
-                    </p>
-
-                    <div class="mt-1.5 overflow-hidden rounded-lg border border-slate-200 bg-slate-950">
-                      <%= if preview_image_url(post) do %>
-                        <img
-                          src={preview_image_url(post)}
-                          alt={og_preview_title(post)}
-                          class="x-media-thumb h-20 w-full object-cover"
-                          loading="lazy"
-                          referrerpolicy="no-referrer"
-                        />
-                      <% else %>
-                        <div class="x-media-fallback h-20 p-2">
-                          <p class="line-clamp-1 text-xs font-bold text-slate-900">
-                            {og_preview_title(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[11px] text-slate-600">
-                            {og_preview_text(post)}
-                          </p>
-                          <p class="line-clamp-1 text-[10px] text-slate-500">
-                            {og_preview_source(post)}
-                          </p>
-                        </div>
-                      <% end %>
-                    </div>
-
-                    <p class="my-feed-body line-clamp-2">{og_preview_text(post)}</p>
-
-                    <div class="my-feed-actions" aria-hidden="true">
-                      <span id={"my-liked-like-count-#{post.id}"} class="my-feed-action is-accent">
-                        <.icon name="hero-hand-thumb-up" class="size-4" /> {post.like_count}
-                      </span>
-                      <span id={"my-liked-dislike-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-hand-thumb-down" class="size-4" /> {post.dislike_count}
-                      </span>
-                      <span id={"my-liked-view-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chart-bar" class="size-4" /> {post.view_count}
-                      </span>
-                      <span id={"my-liked-live-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-signal" class="size-4" /> {Map.get(
-                          @active_counts,
-                          post.id,
-                          0
-                        )}
-                      </span>
-                      <span id={"my-liked-comment-count-#{post.id}"} class="my-feed-action">
-                        <.icon name="hero-chat-bubble-left-right" class="size-4" /> {post.comment_count}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              <% end %>
-            </div>
+            <.profile_room_grid
+              posts={@liked_posts}
+              id_prefix="my-liked"
+              active_counts={@active_counts}
+            />
           <% end %>
         </section>
       </section>
@@ -767,13 +519,6 @@ defmodule MatdoriWeb.MyPageLive do
     end
   end
 
-  defp og_preview_title(post) do
-    case String.trim(post.preview_title || "") do
-      "" -> display_title(post)
-      value -> value
-    end
-  end
-
   defp og_preview_text(post) do
     preview = String.trim(post.preview_description || "")
     snapshot = snapshot_preview_text(post.current_snapshot)
@@ -812,13 +557,6 @@ defmodule MatdoriWeb.MyPageLive do
   defp maybe_upgrade_to_https(%URI{scheme: "http"} = uri), do: %{uri | scheme: "https"}
   defp maybe_upgrade_to_https(uri), do: uri
 
-  defp og_preview_source(post) do
-    case URI.parse(String.trim(post.tweet_url || "")) do
-      %URI{host: host} when is_binary(host) and host != "" -> host
-      _ -> "source unavailable"
-    end
-  end
-
   defp normalize_profile_tab(tab) when tab in @profile_tabs, do: tab
   defp normalize_profile_tab(_tab), do: "created"
 
@@ -827,6 +565,134 @@ defmodule MatdoriWeb.MyPageLive do
       "my-profile-tab",
       active? && "is-active"
     ]
+  end
+
+  attr :posts, :list, required: true
+  attr :id_prefix, :string, required: true
+  attr :active_counts, :map, required: true
+  attr :delete_event, :string, default: nil
+
+  defp profile_room_grid(assigns) do
+    ~H"""
+    <div id={"#{@id_prefix}-room-media-grid"} class="x-media-grid mt-4" phx-hook="MasonryGrid">
+      <%= for post <- @posts do %>
+        <article class={[media_card_class(post), "relative"]}>
+          <.link
+            id={"#{@id_prefix}-room-#{post.id}"}
+            navigate={~p"/rooms/#{post.id}"}
+            class="absolute inset-0 z-10"
+            aria-label={"Open #{display_title(post)}"}
+          >
+          </.link>
+
+          <div class={media_frame_class(post)}>
+            <%= cond do %>
+              <% embed_provider(post) == :x -> %>
+                <div
+                  id={"#{@id_prefix}-x-embed-#{post.id}"}
+                  class="x-media-x-embed"
+                  phx-hook="XEmbed"
+                  phx-update="ignore"
+                  data-tweet-url={post.tweet_url}
+                >
+                </div>
+              <% embed_provider(post) == :youtube and youtube_embed_url(post) -> %>
+                <iframe
+                  id={"#{@id_prefix}-youtube-#{post.id}"}
+                  src={youtube_embed_url(post)}
+                  title={display_title(post)}
+                  class="x-media-youtube"
+                  loading="lazy"
+                  referrerpolicy="strict-origin-when-cross-origin"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowfullscreen
+                >
+                </iframe>
+              <% preview_image_url(post) -> %>
+                <img
+                  src={preview_image_url(post)}
+                  alt={display_title(post)}
+                  class="x-media-thumb"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                />
+              <% true -> %>
+                <div class="x-media-fallback">
+                  <p
+                    id={"#{@id_prefix}-room-fallback-title-#{post.id}"}
+                    class="x-media-fallback-title"
+                  >
+                    {display_title(post)}
+                  </p>
+                  <p class="x-media-fallback-url">{og_preview_text(post)}</p>
+                </div>
+            <% end %>
+
+            <span id={"#{@id_prefix}-room-status-#{post.id}"} class="x-media-status">
+              {embed_status_label(post)}
+            </span>
+
+            <div class="x-media-overlay">
+              <p id={"#{@id_prefix}-room-title-#{post.id}"} class="x-media-title">
+                {display_title(post)}
+              </p>
+              <div class="x-media-metrics">
+                <span id={"#{@id_prefix}-like-count-#{post.id}"}>Likes {post.like_count}</span>
+                <span id={"#{@id_prefix}-dislike-count-#{post.id}"}>
+                  Dislikes {post.dislike_count}
+                </span>
+                <span id={"#{@id_prefix}-view-count-#{post.id}"}>Views {post.view_count}</span>
+                <span id={"#{@id_prefix}-live-count-#{post.id}"}>
+                  Active {Map.get(@active_counts, post.id, 0)}
+                </span>
+                <span id={"#{@id_prefix}-comment-count-#{post.id}"}>
+                  Comments {post.comment_count}
+                </span>
+              </div>
+            </div>
+
+            <button
+              :if={@delete_event}
+              id={"#{@id_prefix}-delete-#{post.id}"}
+              type="button"
+              phx-click={@delete_event}
+              phx-value-post_id={post.id}
+              class="my-feed-delete-btn absolute right-2 top-2 z-20"
+            >
+              <.icon name="hero-trash" class="size-3.5" />
+            </button>
+          </div>
+        </article>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp embed_status_label(post), do: post.tweet_url |> Embed.classify() |> Embed.status_label()
+  defp embed_provider(post), do: post.tweet_url |> Embed.classify() |> Map.get(:provider)
+  defp youtube_embed_url(post), do: post.tweet_url |> Embed.classify() |> Map.get(:embed_url)
+
+  defp media_card_class(post) do
+    [
+      "x-media-card group",
+      "x-media-card--#{media_type(post)}"
+    ]
+  end
+
+  defp media_frame_class(post) do
+    [
+      "x-media-frame",
+      "x-media-frame--#{media_type(post)}"
+    ]
+  end
+
+  defp media_type(post) do
+    cond do
+      embed_provider(post) == :x -> "x"
+      embed_provider(post) == :youtube and youtube_embed_url(post) -> "youtube"
+      preview_image_url(post) -> "image"
+      true -> "fallback"
+    end
   end
 
   defp profile_form(display_name, interests, color) do
@@ -889,20 +755,4 @@ defmodule MatdoriWeb.MyPageLive do
   end
 
   defp normalize_profile_color(_value), do: @default_profile_color
-
-  defp format_post_date(%DateTime{} = inserted_at) do
-    date = DateTime.to_date(inserted_at)
-    "#{date.month}/#{date.day}"
-  end
-
-  defp format_post_date(_inserted_at), do: "-"
-
-  defp author_initial(name) when is_binary(name) do
-    case String.trim(name) do
-      "" -> "M"
-      trimmed -> trimmed |> String.slice(0, 1) |> String.upcase()
-    end
-  end
-
-  defp author_initial(_name), do: "M"
 end
