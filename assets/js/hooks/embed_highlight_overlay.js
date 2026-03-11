@@ -191,7 +191,7 @@ function createDraftNode(color) {
   return el
 }
 
-function buildStateKey(highlightsBySession, draftsBySession, selectedHighlight) {
+function buildStateKey(highlightsBySession, draftsBySession, selectedHighlight, visibilityFilter) {
   const keys = []
 
   Array.from(highlightsBySession.entries())
@@ -214,6 +214,8 @@ function buildStateKey(highlightsBySession, draftsBySession, selectedHighlight) 
   if (selectedHighlight) {
     keys.push(`s|${selectedHighlight.sessionId}|${selectedHighlight.highlightId}`)
   }
+
+  keys.push(`v|${visibilityFilter || "all"}`)
 
   return keys.join("||")
 }
@@ -687,11 +689,21 @@ const EmbedHighlightOverlay = {
     }
 
     this.syncStateKey = () => {
-      this.stateKey = buildStateKey(this.highlightsBySession, this.draftsBySession, this.selectedHighlight)
+      this.stateKey = buildStateKey(
+        this.highlightsBySession,
+        this.draftsBySession,
+        this.selectedHighlight,
+        this.visibilityFilter,
+      )
     }
 
     this.syncStateAndRender = () => {
-      const nextKey = buildStateKey(this.highlightsBySession, this.draftsBySession, this.selectedHighlight)
+      const nextKey = buildStateKey(
+        this.highlightsBySession,
+        this.draftsBySession,
+        this.selectedHighlight,
+        this.visibilityFilter,
+      )
 
       if (nextKey === this.stateKey) {
         this.updateCount()
@@ -1074,6 +1086,15 @@ const EmbedHighlightOverlay = {
       const myZones = [...this.myHighlights(), normalized]
       this.setMyHighlights(myZones)
       this.setSelection(this.mySessionId, normalized.id)
+
+      if (this.visibilityFilter !== "mine") {
+        this.visibilityFilter = "mine"
+
+        if (this.visibilityFilterSelect instanceof HTMLSelectElement) {
+          this.visibilityFilterSelect.value = "mine"
+        }
+      }
+
       this.setLocalDraftZone(null, { push: true, immediate: true })
     }
 
@@ -1207,6 +1228,7 @@ const EmbedHighlightOverlay = {
       }
 
       event.preventDefault()
+
       this.pushCursorMoveFromEvent(event, { force: true })
       const point = this.relativePoint(event)
       this.dragPointerId = event.pointerId

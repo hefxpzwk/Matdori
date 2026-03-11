@@ -898,25 +898,41 @@ defmodule MatdoriWeb.RoomLive do
                       id="embed-highlight-visibility-filter"
                       class="h-7 min-w-28 rounded-full border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-400 focus:border-teal-400"
                     >
-                      <option value="hidden">하이라이트 안보기</option>
-                      <option value="all" selected>전체보기</option>
-                      <option value="mine">내것만</option>
-                      <option value="others">다른 사람거</option>
+                      <option value="hidden">Hide highlights</option>
+                      <option value="all" selected>Show all</option>
+                      <option value="mine">Mine only</option>
+                      <option value="others">Others only</option>
                     </select>
-                    <button
-                      id="embed-highlight-mode-toggle"
-                      type="button"
-                      data-highlight-overlay-toggle
-                      disabled={!@authenticated}
-                      aria-pressed="false"
-                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
-                    >
-                      <.icon name="hero-pencil-square" class="h-3.5 w-3.5" /> Highlight
-                      <span id="embed-highlight-mode-state">OFF</span>
-                    </button>
                   </div>
                 </div>
               </aside>
+
+              <div
+                :if={!@post.hidden}
+                id="embed-highlight-fab"
+                class="fixed bottom-5 right-5 z-40 sm:bottom-7 sm:right-7"
+              >
+                <button
+                  id="embed-highlight-mode-toggle"
+                  type="button"
+                  data-highlight-overlay-toggle
+                  disabled={!@authenticated}
+                  aria-pressed="false"
+                  class={[
+                    "inline-flex h-14 w-14 items-center justify-center rounded-full border border-zinc-300 bg-white text-zinc-700 shadow-lg shadow-black/10 transition hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-xl hover:shadow-black/15",
+                    !@authenticated && "cursor-not-allowed opacity-55"
+                  ]}
+                >
+                  <.icon name="hero-pencil-square" class="h-6 w-6" />
+                  <span class="sr-only">Highlight mode</span>
+                </button>
+                <span
+                  id="embed-highlight-mode-state"
+                  class="pointer-events-none absolute -top-1.5 -right-1.5 inline-flex min-w-9 items-center justify-center rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[10px] font-black text-zinc-700"
+                >
+                  OFF
+                </span>
+              </div>
             </div>
 
             <div
