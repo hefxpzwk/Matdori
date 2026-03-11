@@ -46,4 +46,36 @@ defmodule Matdori.LinkPreviewTest do
 
     assert LinkPreview.fetch("https://example.com/post", req_get: req_get) == %{}
   end
+
+  test "fetch/2 blocks localhost URLs" do
+    previous = Application.get_env(:matdori, :link_preview_enabled)
+    Application.put_env(:matdori, :link_preview_enabled, true)
+    on_exit(fn -> Application.put_env(:matdori, :link_preview_enabled, previous) end)
+
+    req_get = fn _url, _opts ->
+      send(self(), :req_called)
+
+      {:ok,
+       %Req.Response{status: 200, headers: [{"content-type", "text/html"}], body: "<html></html>"}}
+    end
+
+    assert LinkPreview.fetch("http://localhost/internal", req_get: req_get) == %{}
+    refute_receive :req_called
+  end
+
+  test "fetch/2 blocks private IP URLs" do
+    previous = Application.get_env(:matdori, :link_preview_enabled)
+    Application.put_env(:matdori, :link_preview_enabled, true)
+    on_exit(fn -> Application.put_env(:matdori, :link_preview_enabled, previous) end)
+
+    req_get = fn _url, _opts ->
+      send(self(), :req_called)
+
+      {:ok,
+       %Req.Response{status: 200, headers: [{"content-type", "text/html"}], body: "<html></html>"}}
+    end
+
+    assert LinkPreview.fetch("http://10.10.10.10/internal", req_get: req_get) == %{}
+    refute_receive :req_called
+  end
 end

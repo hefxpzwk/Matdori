@@ -32,6 +32,50 @@ import RoomCommentEnterSubmit from "./hooks/room_comment_enter_submit"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+
+const deleteConfirmMessage = "Are you sure you want to delete this?"
+
+function resolveDeleteTarget(target) {
+  if (!(target instanceof Element)) {
+    return null
+  }
+
+  return target.closest(
+    "[data-confirm-delete], [data-overlay-comment-delete='true'], [phx-click], button[id*='delete'], a[id*='delete']"
+  )
+}
+
+function requiresDeleteConfirmation(element) {
+  if (!(element instanceof HTMLElement)) {
+    return false
+  }
+
+  if (element.hasAttribute("data-confirm-delete") || element.dataset.overlayCommentDelete === "true") {
+    return true
+  }
+
+  const phxClick = element.getAttribute("phx-click") || ""
+  if (phxClick.toLowerCase().includes("delete")) {
+    return true
+  }
+
+  const id = element.id || ""
+  return id.toLowerCase().includes("delete")
+}
+
+window.addEventListener("click", (event) => {
+  const target = resolveDeleteTarget(event.target)
+
+  if (!target || !requiresDeleteConfirmation(target)) {
+    return
+  }
+
+  if (!window.confirm(deleteConfirmMessage)) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+}, true)
+
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},

@@ -586,6 +586,134 @@ defmodule Matdori.CollabTest do
     assert Enum.all?(remaining_overlay, &(&1.google_uid == other_uid))
   end
 
+  test "delete_activity_for_user_in_post/3 removes own highlights and comments in a room" do
+    post = insert_post_with_snapshot()
+    snapshot = Repo.preload(post, :current_snapshot).current_snapshot
+
+    owner_uid = "google-activity-owner"
+    owner_session = "activity-owner-session"
+    other_uid = "google-activity-other"
+
+    assert {:ok, _} =
+             Collab.create_highlight(snapshot, %{
+               "session_id" => owner_session,
+               "google_uid" => owner_uid,
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "quote_exact" => "Hello",
+               "quote_prefix" => "",
+               "quote_suffix" => "",
+               "start_g" => 0,
+               "end_g" => 5
+             })
+
+    assert {:ok, _} =
+             Collab.create_highlight(snapshot, %{
+               "session_id" => "activity-other-session",
+               "google_uid" => other_uid,
+               "display_name" => "Other",
+               "color" => "#222222",
+               "quote_exact" => "world",
+               "quote_prefix" => "",
+               "quote_suffix" => "",
+               "start_g" => 6,
+               "end_g" => 11
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: owner_session,
+               google_uid: owner_uid,
+               display_name: "Owner",
+               color: "#111111",
+               highlights: [
+                 %{
+                   "id" => "owner-overlay",
+                   "left" => 0.1,
+                   "top" => 0.1,
+                   "width" => 0.2,
+                   "height" => 0.2
+                 }
+               ]
+             })
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "activity-other-session",
+               google_uid: other_uid,
+               display_name: "Other",
+               color: "#222222",
+               highlights: [
+                 %{
+                   "id" => "other-overlay",
+                   "left" => 0.4,
+                   "top" => 0.4,
+                   "width" => 0.2,
+                   "height" => 0.2
+                 }
+               ]
+             })
+
+    assert {:ok, _} =
+             Collab.create_room_comment(post.id, %{
+               "session_id" => owner_session,
+               "google_uid" => owner_uid,
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "body" => "owner room comment"
+             })
+
+    assert {:ok, _} =
+             Collab.create_room_comment(post.id, %{
+               "session_id" => "activity-other-session",
+               "google_uid" => other_uid,
+               "display_name" => "Other",
+               "color" => "#222222",
+               "body" => "other room comment"
+             })
+
+    assert {:ok, _} =
+             Collab.create_overlay_highlight_comment(post.id, "other-overlay", %{
+               "session_id" => owner_session,
+               "google_uid" => owner_uid,
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "body" => "owner overlay comment"
+             })
+
+    assert {:ok, _} =
+             Collab.create_overlay_highlight_comment(post.id, "other-overlay", %{
+               "session_id" => "activity-other-session",
+               "google_uid" => other_uid,
+               "display_name" => "Other",
+               "color" => "#222222",
+               "body" => "other overlay comment"
+             })
+
+    assert {:ok,
+            %{
+              deleted_total: 4,
+              deleted_text: 1,
+              deleted_overlay: 1,
+              deleted_room_comments: 1,
+              deleted_overlay_comments: 1
+            }} = Collab.delete_activity_for_user_in_post(post.id, owner_uid, owner_session)
+
+    remaining_text = Repo.all(from h in Highlight, where: h.post_snapshot_id == ^snapshot.id)
+    remaining_overlay = Repo.all(from h in OverlayHighlight, where: h.post_id == ^post.id)
+    remaining_room_comments = Collab.list_room_comments(post.id)
+    remaining_overlay_comments = Collab.list_overlay_highlight_comments(post.id)
+
+    assert Enum.count(remaining_text) == 1
+    assert Enum.all?(remaining_text, &(&1.google_uid == other_uid))
+    assert Enum.count(remaining_overlay) == 1
+    assert Enum.all?(remaining_overlay, &(&1.google_uid == other_uid))
+    assert Enum.count(remaining_room_comments) == 1
+    assert Enum.all?(remaining_room_comments, &(&1.google_uid == other_uid))
+    assert Enum.count(remaining_overlay_comments) == 1
+    assert Enum.all?(remaining_overlay_comments, &(&1.google_uid == other_uid))
+  end
+
   test "sync_configured_account_posts/1 imports posts and latest order follows tweet_posted_at" do
     older = System.unique_integer([:positive])
     newer = System.unique_integer([:positive])

@@ -15,6 +15,9 @@ config :matdori, :x_source_username, "bbiribarabu"
 config :matdori, :x_periodic_sync_interval_ms, 60_000
 config :matdori, :x_periodic_sync_enabled, false
 config :matdori, :link_preview_enabled, true
+config :matdori, :session_secure, false
+config :matdori, :session_same_site, "Lax"
+config :matdori, :session_max_age, 1_209_600
 
 # Configure the endpoint
 config :matdori, MatdoriWeb.Endpoint,

@@ -4,11 +4,19 @@ defmodule MatdoriWeb.Endpoint do
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
+  @session_secure Application.compile_env(:matdori, :session_secure, false)
+  @session_same_site Application.compile_env(:matdori, :session_same_site, "Lax")
+  @session_max_age Application.compile_env(:matdori, :session_max_age, 1_209_600)
+
   @session_options [
     store: :cookie,
     key: "_matdori_key",
     signing_salt: "f1TeS6Ah",
-    same_site: "Lax"
+    encryption_salt: "k4tq9f2p",
+    http_only: true,
+    secure: @session_secure,
+    same_site: @session_same_site,
+    max_age: @session_max_age
   ]
 
   socket "/live", Phoenix.LiveView.Socket,

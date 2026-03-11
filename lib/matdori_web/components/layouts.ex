@@ -119,9 +119,9 @@ defmodule MatdoriWeb.Layouts do
                       <.link navigate={~p"/me"} class="x-profile-menu-item">
                         <.icon name="hero-cog-6-tooth" class="size-4" /> Settings
                       </.link>
-                      <a href={~p"/auth/logout"} class="x-profile-menu-item danger">
+                      <.link href={~p"/auth/logout"} method="post" class="x-profile-menu-item danger">
                         <.icon name="hero-arrow-right-start-on-rectangle" class="size-4" /> Log out
-                      </a>
+                      </.link>
                     </div>
                   </div>
 

@@ -775,6 +775,7 @@ defmodule MatdoriWeb.RoomLive do
                                 <button
                                   id="embed-highlight-delete"
                                   type="button"
+                                  data-confirm-delete
                                   class="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
                                 >
                                   <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete Highlight
@@ -956,6 +957,7 @@ defmodule MatdoriWeb.RoomLive do
                   }
                   id={"room-comment-delete-#{comment.id}"}
                   type="button"
+                  data-confirm-delete
                   phx-click="delete_comment"
                   phx-value-id={comment.id}
                   class="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"

@@ -198,15 +198,15 @@ defmodule MatdoriWeb.MyPageLive do
   def handle_event("delete_my_highlights", %{"post_id" => post_id}, socket) do
     with {:ok, parsed_post_id} <- parse_post_id(post_id),
          {:ok, result} <-
-           Collab.delete_highlights_for_user_in_post(
+           Collab.delete_activity_for_user_in_post(
              parsed_post_id,
              socket.assigns.google_uid,
              socket.assigns.session_id
            ) do
       message =
         if result.deleted_total > 0,
-          do: "Your highlights were deleted.",
-          else: "No highlights to delete."
+          do: "Your highlights and comments were deleted.",
+          else: "No highlights or comments to delete."
 
       {:noreply,
        socket
@@ -655,6 +655,7 @@ defmodule MatdoriWeb.MyPageLive do
               :if={@delete_event}
               id={"#{@id_prefix}-delete-#{post.id}"}
               type="button"
+              data-confirm-delete
               phx-click={@delete_event}
               phx-value-post_id={post.id}
               class="my-feed-delete-btn absolute right-2 top-2 z-20"

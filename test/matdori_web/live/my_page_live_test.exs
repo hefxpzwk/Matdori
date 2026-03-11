@@ -250,4 +250,45 @@ defmodule MatdoriWeb.MyPageLiveTest do
     _html = view |> element("#my-tab-active") |> render_click()
     assert has_element?(view, "#my-active-room-#{overlay_post.id}")
   end
+
+  test "active room delete removes my room comments too", %{conn: conn} do
+    google_uid = "google-my-page-comment-delete-user"
+
+    conn =
+      google_auth_conn(conn, %{
+        "google_uid" => google_uid,
+        "google_name" => "Comment Delete User",
+        "display_name" => "Comment Delete User"
+      })
+
+    assert {:ok, active_post} =
+             Collab.share_post(
+               %{
+                 "title" => "댓글로만 활성화된 방",
+                 "tweet_url" =>
+                   "https://x.com/my_page_comment_active/status/#{System.unique_integer([:positive])}",
+                 "google_uid" => "active-comment-owner"
+               },
+               "my-page-comment-active-owner"
+             )
+
+    assert {:ok, _comment} =
+             Collab.create_room_comment(active_post.id, %{
+               "session_id" => "my-page-comment-active-session",
+               "google_uid" => google_uid,
+               "display_name" => "Comment Delete User",
+               "color" => "#3b82f6",
+               "body" => "내 댓글"
+             })
+
+    {:ok, view, _html} = live(conn, ~p"/me")
+    _html = view |> element("#my-tab-active") |> render_click()
+
+    assert has_element?(view, "#my-active-room-#{active_post.id}")
+
+    _html = view |> element("#my-active-delete-#{active_post.id}") |> render_click()
+
+    refute has_element?(view, "#my-active-room-#{active_post.id}")
+    assert has_element?(view, "#my-active-empty")
+  end
 end

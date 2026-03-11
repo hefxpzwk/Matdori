@@ -29,21 +29,91 @@ defmodule Matdori.LinkPreview do
       receive_timeout: 4_000
     ]
 
-    case req_get.(url, request_opts) do
-      {:ok, %Req.Response{status: status, headers: headers, body: body}}
-      when status in 200..299 and is_binary(body) ->
-        if html_response?(headers) do
-          body
-          |> String.slice(0, @max_body_size)
-          |> extract_preview(url)
-        else
-          %{}
-        end
+    if safe_preview_url?(url) do
+      case req_get.(url, request_opts) do
+        {:ok, %Req.Response{status: status, headers: headers, body: body}}
+        when status in 200..299 and is_binary(body) ->
+          if html_response?(headers) do
+            body
+            |> String.slice(0, @max_body_size)
+            |> extract_preview(url)
+          else
+            %{}
+          end
 
-      _ ->
-        %{}
+        _ ->
+          %{}
+      end
+    else
+      %{}
     end
   end
+
+  defp safe_preview_url?(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host, userinfo: nil}
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        host_allowed?(host)
+
+      _ ->
+        false
+    end
+  end
+
+  defp safe_preview_url?(_url), do: false
+
+  defp host_allowed?(host) do
+    normalized_host =
+      host |> String.trim() |> String.trim_leading("[") |> String.trim_trailing("]")
+
+    cond do
+      normalized_host == "" ->
+        false
+
+      localhost_host?(normalized_host) ->
+        false
+
+      true ->
+        case :inet.parse_address(String.to_charlist(normalized_host)) do
+          {:ok, ip} -> public_ip?(ip)
+          {:error, _reason} -> true
+        end
+    end
+  end
+
+  defp localhost_host?(host) do
+    downcased = String.downcase(host)
+    downcased == "localhost" or String.ends_with?(downcased, ".localhost")
+  end
+
+  defp public_ip?({a, b, _c, _d}) do
+    cond do
+      a == 0 -> false
+      a == 10 -> false
+      a == 127 -> false
+      a == 169 and b == 254 -> false
+      a == 172 and b in 16..31 -> false
+      a == 192 and b == 168 -> false
+      a == 198 and b in 18..19 -> false
+      a == 100 and b in 64..127 -> false
+      a >= 224 -> false
+      true -> true
+    end
+  end
+
+  defp public_ip?({0, 0, 0, 0, 0, 0, 0, 0}), do: false
+  defp public_ip?({0, 0, 0, 0, 0, 0, 0, 1}), do: false
+
+  defp public_ip?({a, b, _c, _d, _e, _f, _g, _h}) do
+    cond do
+      a in 0xFC..0xFD -> false
+      a == 0xFE and b in 0x80..0xBF -> false
+      a == 0xFF -> false
+      true -> true
+    end
+  end
+
+  defp public_ip?(_), do: false
 
   defp html_response?(headers) do
     headers

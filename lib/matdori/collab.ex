@@ -713,6 +713,112 @@ defmodule Matdori.Collab do
   def delete_highlights_for_user_in_post(_post_id, _google_uid, _session_id),
     do: {:error, :invalid_owner}
 
+  def delete_activity_for_user_in_post(post_id, google_uid, session_id \\ nil)
+
+  def delete_activity_for_user_in_post(post_id, google_uid, session_id)
+      when is_integer(post_id) do
+    uid = normalize_google_uid(google_uid)
+    sid = normalize_session_id(session_id)
+
+    with {:ok, highlights_result} <- delete_highlights_for_user_in_post(post_id, uid, sid) do
+      now = DateTime.utc_now()
+
+      {deleted_room_comments, deleted_overlay_comments} =
+        cond do
+          is_binary(uid) and is_binary(sid) ->
+            room_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  where:
+                    c.post_id == ^post_id and
+                      is_nil(c.deleted_at) and
+                      (c.google_uid == ^uid or (is_nil(c.google_uid) and c.session_id == ^sid))
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            overlay_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  join: h in OverlayHighlight,
+                  on: h.id == c.overlay_highlight_id,
+                  where:
+                    h.post_id == ^post_id and
+                      is_nil(c.deleted_at) and
+                      (c.google_uid == ^uid or (is_nil(c.google_uid) and c.session_id == ^sid))
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            {elem(room_comments_result, 0), elem(overlay_comments_result, 0)}
+
+          is_binary(uid) ->
+            room_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  where: c.post_id == ^post_id and is_nil(c.deleted_at) and c.google_uid == ^uid
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            overlay_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  join: h in OverlayHighlight,
+                  on: h.id == c.overlay_highlight_id,
+                  where: h.post_id == ^post_id and is_nil(c.deleted_at) and c.google_uid == ^uid
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            {elem(room_comments_result, 0), elem(overlay_comments_result, 0)}
+
+          is_binary(sid) ->
+            room_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  where: c.post_id == ^post_id and is_nil(c.deleted_at) and c.session_id == ^sid
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            overlay_comments_result =
+              Repo.update_all(
+                from(c in Comment,
+                  join: h in OverlayHighlight,
+                  on: h.id == c.overlay_highlight_id,
+                  where: h.post_id == ^post_id and is_nil(c.deleted_at) and c.session_id == ^sid
+                ),
+                set: [deleted_at: now, body: "[deleted]"]
+              )
+
+            {elem(room_comments_result, 0), elem(overlay_comments_result, 0)}
+
+          true ->
+            {-1, -1}
+        end
+
+      if deleted_room_comments >= 0 and deleted_overlay_comments >= 0 do
+        deleted_total =
+          highlights_result.deleted_total + deleted_room_comments + deleted_overlay_comments
+
+        {:ok,
+         %{
+           deleted_text: highlights_result.deleted_text,
+           deleted_overlay: highlights_result.deleted_overlay,
+           deleted_room_comments: deleted_room_comments,
+           deleted_overlay_comments: deleted_overlay_comments,
+           deleted_total: deleted_total
+         }}
+      else
+        {:error, :invalid_owner}
+      end
+    end
+  end
+
+  def delete_activity_for_user_in_post(_post_id, _google_uid, _session_id),
+    do: {:error, :invalid_owner}
+
   def restore_today_post do
     case get_today_post() do
       nil ->
@@ -737,7 +843,7 @@ defmodule Matdori.Collab do
   def list_room_comments(post_id) when is_integer(post_id) do
     Repo.all(
       from c in Comment,
-        where: c.post_id == ^post_id and is_nil(c.highlight_id),
+        where: c.post_id == ^post_id and is_nil(c.highlight_id) and is_nil(c.deleted_at),
         order_by: [asc: c.inserted_at, asc: c.id]
     )
   end

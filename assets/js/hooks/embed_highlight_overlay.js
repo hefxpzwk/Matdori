@@ -428,6 +428,7 @@ const EmbedHighlightOverlay = {
           const deleteButton = document.createElement("button")
           deleteButton.type = "button"
           deleteButton.dataset.overlayCommentDelete = "true"
+          deleteButton.dataset.confirmDelete = ""
           deleteButton.dataset.commentId = String(comment.id)
           deleteButton.className =
             "inline-flex items-center rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100"

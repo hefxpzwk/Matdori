@@ -80,6 +80,37 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#room-comment-author-#{comment.id}[href='/users/#{google_uid}']")
   end
 
+  test "deleting a room comment removes it from the room list", %{conn: conn} do
+    conn = google_auth_conn(conn)
+    id = Integer.to_string(System.unique_integer([:positive]))
+
+    assert {:ok, post} =
+             Collab.share_post(
+               %{
+                 "title" => "댓글 삭제 방",
+                 "tweet_url" => "https://x.com/room_comment_delete/status/#{id}"
+               },
+               "room-live-room-comment-delete"
+             )
+
+    {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
+
+    render_submit(element(view, "#room-comment-form"), %{
+      "room_comment" => %{"body" => "삭제할 댓글"}
+    })
+
+    [comment | _] = Collab.list_room_comments(post.id)
+
+    assert has_element?(view, "#room-comment-#{comment.id}")
+
+    view
+    |> element("#room-comment-delete-#{comment.id}")
+    |> render_click()
+
+    refute has_element?(view, "#room-comment-#{comment.id}")
+    assert has_element?(view, "#room-comments-empty")
+  end
+
   test "x room shows native embed status", %{conn: conn} do
     conn = google_auth_conn(conn)
     id = Integer.to_string(System.unique_integer([:positive]))

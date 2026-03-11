@@ -42,7 +42,7 @@ defmodule Matdori.RateLimiter do
   def handle_info(:prune, state) do
     cutoff = System.system_time(:second) - 180
 
-    :ets.select_delete(@table, [{{{:_, :_, :_}, :_, :"$1"}, [{:<, :"$1", cutoff}], [true]}])
+    :ets.select_delete(@table, [{{{:_, :_, :_, :_}, :_, :"$1"}, [{:<, :"$1", cutoff}], [true]}])
 
     Process.send_after(self(), :prune, :timer.minutes(2))
     {:noreply, state}
