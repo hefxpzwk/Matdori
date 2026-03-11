@@ -136,7 +136,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert has_element?(view, "#embed-highlight-mode-toggle")
     assert has_element?(view, "#embed-highlight-mode-state", "OFF")
     refute has_element?(view, "#embed-highlight-clear")
-    assert has_element?(view, "#embed-highlight-count", "0 selected")
+    refute has_element?(view, "#embed-highlight-count")
     assert has_element?(view, "#embed-highlight-comment-panel.hidden")
     assert has_element?(view, "#embed-highlight-comment-pointer")
     assert has_element?(view, "#embed-highlight-comments-list")

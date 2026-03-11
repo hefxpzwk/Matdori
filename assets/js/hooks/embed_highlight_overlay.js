@@ -230,10 +230,9 @@ const EmbedHighlightOverlay = {
     this.stageViewport = this.stage ? this.stage.closest("#room-embed-stage") : null
     this.cursorStage = this.el.closest("#room-collab-stage") || this.stage
     this.toggleButton = document.querySelector(this.el.dataset.toggleSelector || "")
+    this.visibilityFilterSelect = document.querySelector(this.el.dataset.filterSelector || "")
     this.modeStateLabel = document.querySelector("#embed-highlight-mode-state")
-    this.countLabel = document.querySelector(this.el.dataset.countSelector || "")
-
-    if (!this.stage || !this.toggleButton || !this.countLabel) {
+    if (!this.stage || !this.toggleButton) {
       return
     }
 
@@ -260,6 +259,7 @@ const EmbedHighlightOverlay = {
     this.lastPanelKey = ""
 
     this.enabled = false
+    this.visibilityFilter = "all"
     this.dragging = false
     this.dragPointerId = null
     this.dragStart = null
@@ -311,15 +311,20 @@ const EmbedHighlightOverlay = {
       return mine ? mine.zones : []
     }
 
-    this.updateCount = () => {
-      const ownCount = this.myHighlights().length
-      const totalCount = Array.from(this.highlightsBySession.values()).reduce(
-        (sum, payload) => sum + payload.zones.length,
-        0
-      )
+    this.updateCount = () => {}
 
-      this.countLabel.textContent =
-        totalCount > ownCount ? `${ownCount}개 선택됨 · 전체 ${totalCount}개` : `${ownCount}개 선택됨`
+    this.visibleByFilter = (isMine) => {
+      switch (this.visibilityFilter) {
+        case "hidden":
+          return false
+        case "mine":
+          return isMine
+        case "others":
+          return !isMine
+        case "all":
+        default:
+          return true
+      }
     }
 
     this.commentsForHighlight = (highlightId) => {
@@ -472,7 +477,12 @@ const EmbedHighlightOverlay = {
         return null
       }
 
-      return this.getHighlightEntry(this.selectedHighlight.sessionId, this.selectedHighlight.highlightId)
+      const entry = this.getHighlightEntry(this.selectedHighlight.sessionId, this.selectedHighlight.highlightId)
+      if (!entry || !this.visibleByFilter(entry.isMine)) {
+        return null
+      }
+
+      return entry
     }
 
     this.clearSelection = () => {
@@ -616,6 +626,10 @@ const EmbedHighlightOverlay = {
 
       entries.forEach(([sessionId, payload]) => {
         const isMine = sessionId === this.mySessionId
+        if (!this.visibleByFilter(isMine)) {
+          return
+        }
+
         const nodes = []
 
         payload.zones.forEach((zone) => {
@@ -1170,6 +1184,19 @@ const EmbedHighlightOverlay = {
       this.syncModeUi()
     }
 
+    this.onVisibilityFilterChange = () => {
+      if (!(this.visibilityFilterSelect instanceof HTMLSelectElement)) {
+        this.visibilityFilter = "all"
+      } else {
+        const nextFilter = this.visibilityFilterSelect.value
+        this.visibilityFilter = ["hidden", "all", "mine", "others"].includes(nextFilter)
+          ? nextFilter
+          : "all"
+      }
+
+      this.syncStateAndRender()
+    }
+
     this.onPointerDown = (event) => {
       if (!this.enabled || event.button !== 0) {
         return
@@ -1311,6 +1338,10 @@ const EmbedHighlightOverlay = {
       this.commentCloseButton.addEventListener("click", this.onCommentCloseClick)
     }
 
+    if (this.visibilityFilterSelect) {
+      this.visibilityFilterSelect.addEventListener("change", this.onVisibilityFilterChange)
+    }
+
     if (typeof ResizeObserver === "function") {
       this.stageResizeObserver = new ResizeObserver(() => {
         this.onStageResize()
@@ -1328,6 +1359,7 @@ const EmbedHighlightOverlay = {
     window.addEventListener("keydown", this.onKeyDown)
 
     this.updateDraftNodeStyle()
+    this.onVisibilityFilterChange()
     this.syncModeUi()
     this.syncStateKey()
     this.updateCount()
@@ -1357,6 +1389,10 @@ const EmbedHighlightOverlay = {
 
     if (this.commentCloseButton && this.onCommentCloseClick) {
       this.commentCloseButton.removeEventListener("click", this.onCommentCloseClick)
+    }
+
+    if (this.visibilityFilterSelect && this.onVisibilityFilterChange) {
+      this.visibilityFilterSelect.removeEventListener("change", this.onVisibilityFilterChange)
     }
 
     if (this.el && this.onPointerDown) {

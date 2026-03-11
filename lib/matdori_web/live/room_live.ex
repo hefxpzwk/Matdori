@@ -604,7 +604,7 @@ defmodule MatdoriWeb.RoomLive do
             class="mat-surface relative p-5 sm:p-6"
           >
             <div class="-ml-5 mb-1 flex flex-wrap items-center justify-between gap-3 sm:-ml-6">
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <h1 id="room-title" class="text-xl font-black tracking-tight text-slate-900">
                   {display_title(@post)}
                 </h1>
@@ -614,6 +614,17 @@ defmodule MatdoriWeb.RoomLive do
                 >
                   {embed_status_label(@post)}
                 </span>
+                <.link
+                  :if={!@post.hidden}
+                  id="room-open-source-link"
+                  href={@post.tweet_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+                >
+                  <.icon name="hero-arrow-top-right-on-square" class="h-3.5 w-3.5" />
+                  Open Original Link
+                </.link>
               </div>
               <aside id="room-presence-panel" class="flex items-center gap-2">
                 <p
@@ -643,18 +654,6 @@ defmodule MatdoriWeb.RoomLive do
                   </span>
                 </div>
               </aside>
-            </div>
-
-            <div :if={!@post.hidden} id="room-source-link-row" class="mb-2 flex justify-end">
-              <.link
-                id="room-open-source-link"
-                href={@post.tweet_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
-              >
-                <.icon name="hero-arrow-top-right-on-square" class="h-3.5 w-3.5" /> Open Original Link
-              </.link>
             </div>
 
             <div id="room-content-layout" class="grid gap-4">
@@ -800,7 +799,7 @@ defmodule MatdoriWeb.RoomLive do
                             data-readonly={!@authenticated}
                             data-stage-selector="#room-embed-content"
                             data-toggle-selector="#embed-highlight-mode-toggle"
-                            data-count-selector="#embed-highlight-count"
+                            data-filter-selector="#embed-highlight-visibility-filter"
                             data-comment-panel-selector="#embed-highlight-comment-panel"
                             data-comment-meta-selector="#embed-highlight-comment-meta"
                             data-comment-list-selector="#embed-highlight-comments-list"
@@ -830,60 +829,80 @@ defmodule MatdoriWeb.RoomLive do
                 id="room-side-column"
                 class="order-1 space-y-3"
               >
-                <div
-                  id="room-reactions"
-                  class="flex flex-nowrap items-center gap-1.5"
-                >
-                  <button
-                    id="like-button"
-                    type="button"
-                    phx-click="toggle_reaction"
-                    phx-value-kind="like"
-                    disabled={!@authenticated}
-                    class={[
-                      "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
-                      if(@liked,
-                        do: "border-emerald-400 bg-emerald-50 text-emerald-700",
-                        else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                      ),
-                      !@authenticated && "cursor-not-allowed opacity-50"
-                    ]}
-                  >
-                    <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> Like
-                    <span id="like-count">{@like_count}</span>
-                  </button>
+                <div id="room-reactions" class="flex w-full items-center gap-2">
+                  <div class="flex flex-nowrap items-center gap-1.5">
+                    <button
+                      id="like-button"
+                      type="button"
+                      phx-click="toggle_reaction"
+                      phx-value-kind="like"
+                      disabled={!@authenticated}
+                      class={[
+                        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
+                        if(@liked,
+                          do: "border-emerald-400 bg-emerald-50 text-emerald-700",
+                          else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                        ),
+                        !@authenticated && "cursor-not-allowed opacity-50"
+                      ]}
+                    >
+                      <.icon name="hero-hand-thumb-up" class="h-4 w-4" /> Like
+                      <span id="like-count">{@like_count}</span>
+                    </button>
 
-                  <button
-                    id="dislike-button"
-                    type="button"
-                    phx-click="toggle_reaction"
-                    phx-value-kind="dislike"
-                    disabled={!@authenticated}
-                    class={[
-                      "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
-                      if(@disliked,
-                        do: "border-rose-400 bg-rose-50 text-rose-700",
-                        else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                      ),
-                      !@authenticated && "cursor-not-allowed opacity-50"
-                    ]}
-                  >
-                    <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> Dislike
-                    <span id="dislike-count">{@dislike_count}</span>
-                  </button>
+                    <button
+                      id="dislike-button"
+                      type="button"
+                      phx-click="toggle_reaction"
+                      phx-value-kind="dislike"
+                      disabled={!@authenticated}
+                      class={[
+                        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition",
+                        if(@disliked,
+                          do: "border-rose-400 bg-rose-50 text-rose-700",
+                          else: "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                        ),
+                        !@authenticated && "cursor-not-allowed opacity-50"
+                      ]}
+                    >
+                      <.icon name="hero-hand-thumb-down" class="h-4 w-4" /> Dislike
+                      <span id="dislike-count">{@dislike_count}</span>
+                    </button>
 
-                  <span
-                    id="room-view-count"
-                    class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
-                  >
-                    Views {@view_count}
-                  </span>
+                    <span
+                      id="room-view-count"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
+                    >
+                      Views {@view_count}
+                    </span>
+                  </div>
 
                   <div
                     :if={!@post.hidden}
                     id="embed-highlight-controls"
-                    class="inline-flex shrink-0 items-center gap-1.5"
+                    class="ml-auto inline-flex shrink-0 items-center gap-1.5"
                   >
+                    <button
+                      id="room-remote-cursor-toggle"
+                      type="button"
+                      class="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:border-slate-400"
+                      aria-pressed="true"
+                    >
+                      <.icon name="hero-cursor-arrow-rays" class="h-3.5 w-3.5" /> Others Cursor
+                      <span id="room-remote-cursor-state">ON</span>
+                    </button>
+                    <label for="embed-highlight-visibility-filter" class="sr-only">
+                      Highlight visibility
+                    </label>
+                    <select
+                      id="embed-highlight-visibility-filter"
+                      class="h-7 min-w-28 rounded-full border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-400 focus:border-teal-400"
+                    >
+                      <option value="hidden">하이라이트 안보기</option>
+                      <option value="all" selected>전체보기</option>
+                      <option value="mine">내것만</option>
+                      <option value="others">다른 사람거</option>
+                    </select>
                     <button
                       id="embed-highlight-mode-toggle"
                       type="button"
@@ -895,12 +914,6 @@ defmodule MatdoriWeb.RoomLive do
                       <.icon name="hero-pencil-square" class="h-3.5 w-3.5" /> Highlight
                       <span id="embed-highlight-mode-state">OFF</span>
                     </button>
-                    <span
-                      id="embed-highlight-count"
-                      class="inline-flex shrink-0 items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700"
-                    >
-                      0 selected
-                    </span>
                   </div>
                 </div>
               </aside>
@@ -910,6 +923,8 @@ defmodule MatdoriWeb.RoomLive do
               id="room-remote-cursors"
               phx-hook="RemoteCursors"
               phx-update="ignore"
+              data-toggle-selector="#room-remote-cursor-toggle"
+              data-toggle-state-selector="#room-remote-cursor-state"
               class="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-2xl"
             >
             </div>

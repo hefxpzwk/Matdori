@@ -126,6 +126,29 @@ function buildCursorNode(sessionId) {
 const RemoteCursors = {
   mounted() {
     this.cursorNodes = new Map()
+    this.toggleButton = document.querySelector(this.el.dataset.toggleSelector || "")
+    this.toggleStateLabel = document.querySelector(this.el.dataset.toggleStateSelector || "")
+    this.remoteVisible = true
+
+    this.syncToggleUi = () => {
+      if (!(this.toggleButton instanceof HTMLElement)) {
+        return
+      }
+      this.toggleButton.setAttribute("aria-pressed", this.remoteVisible ? "true" : "false")
+
+      if (this.toggleStateLabel instanceof HTMLElement) {
+        this.toggleStateLabel.textContent = this.remoteVisible ? "ON" : "OFF"
+      }
+    }
+
+    this.clearAllRemoteCursors = () => {
+      this.cursorNodes.forEach((parts) => {
+        this.clearNoteTimers(parts)
+        parts.container.remove()
+      })
+
+      this.cursorNodes.clear()
+    }
 
     this.clearNoteTimers = (parts) => {
       if (parts.noteFadeStartTimer) {
@@ -216,7 +239,22 @@ const RemoteCursors = {
       }, NOTE_FADE_DELAY_MS + NOTE_FADE_DURATION_MS + 20)
     }
 
+    this.onToggleClick = (event) => {
+      event.preventDefault()
+      this.remoteVisible = !this.remoteVisible
+      this.syncToggleUi()
+
+      if (!this.remoteVisible) {
+        this.clearAllRemoteCursors()
+      }
+    }
+
     this.handleEvent("presence_state", ({ presences, me }) => {
+      if (!this.remoteVisible) {
+        this.clearAllRemoteCursors()
+        return
+      }
+
       const nextIds = new Set()
 
       Object.entries(presences || {}).forEach(([sessionId, presence]) => {
@@ -285,16 +323,21 @@ const RemoteCursors = {
         this.cursorNodes.delete(sessionId)
       })
     })
+
+    if (this.toggleButton) {
+      this.toggleButton.addEventListener("click", this.onToggleClick)
+    }
+
+    this.syncToggleUi()
   },
 
   destroyed() {
-    if (this.cursorNodes) {
-      this.cursorNodes.forEach((parts) => {
-        this.clearNoteTimers(parts)
-        parts.container.remove()
-      })
+    if (this.toggleButton && this.onToggleClick) {
+      this.toggleButton.removeEventListener("click", this.onToggleClick)
+    }
 
-      this.cursorNodes.clear()
+    if (this.cursorNodes) {
+      this.clearAllRemoteCursors()
     }
   },
 }
