@@ -637,6 +637,18 @@ defmodule MatdoriWeb.RoomLive do
               </aside>
             </div>
 
+            <div :if={!@post.hidden} id="room-source-link-row" class="mb-2 flex justify-end">
+              <.link
+                id="room-open-source-link"
+                href={@post.tweet_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-50"
+              >
+                <.icon name="hero-arrow-top-right-on-square" class="h-3.5 w-3.5" /> Open Original Link
+              </.link>
+            </div>
+
             <div id="room-content-layout" class="grid gap-4">
               <div id="room-main-column" class="order-2 min-w-0 space-y-4">
                 <div :if={!@authenticated} id="room-login-required" class="text-sm text-slate-600">
@@ -674,7 +686,7 @@ defmodule MatdoriWeb.RoomLive do
                               phx-hook="XEmbed"
                               phx-update="ignore"
                               data-tweet-url={@post.tweet_url}
-                              class="min-h-24 rounded-xl border border-slate-200 bg-white p-2"
+                              class="pointer-events-none min-h-24 rounded-xl border border-slate-200 bg-white p-2"
                             >
                               <blockquote class="twitter-tweet">
                                 <a href={@post.tweet_url}>X Post</a>
@@ -686,7 +698,7 @@ defmodule MatdoriWeb.RoomLive do
                                 <iframe
                                   id="youtube-embed"
                                   src={youtube_embed_url(@post)}
-                                  class="w-full"
+                                  class="pointer-events-none w-full"
                                   style="aspect-ratio: 16 / 9;"
                                   width="1280"
                                   height="720"

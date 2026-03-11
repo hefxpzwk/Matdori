@@ -92,7 +92,13 @@ defmodule Matdori.LinkPreview do
       meta_content(html, "property", "og:image") ||
         meta_content(html, "name", "twitter:image")
 
+    icon_url =
+      html
+      |> icon_href()
+      |> absolute_url(base_url)
+
     image_url = absolute_url(image_url, base_url)
+    image_url = image_url || icon_url
 
     %{}
     |> maybe_put(:preview_title, normalize_text(title, 120))
@@ -122,6 +128,35 @@ defmodule Matdori.LinkPreview do
       _ -> nil
     end
   end
+
+  defp icon_href(html) when is_binary(html) do
+    pattern_rel_first =
+      ~r/<link[^>]*rel\s*=\s*["']([^"']+)["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*>/i
+
+    pattern_href_first =
+      ~r/<link[^>]*href\s*=\s*["']([^"']+)["'][^>]*rel\s*=\s*["']([^"']+)["'][^>]*>/i
+
+    rel_first_matches =
+      Regex.scan(pattern_rel_first, html, capture: :all_but_first)
+      |> Enum.map(fn [rel, href] -> {rel, href} end)
+
+    href_first_matches =
+      Regex.scan(pattern_href_first, html, capture: :all_but_first)
+      |> Enum.map(fn [href, rel] -> {rel, href} end)
+
+    (rel_first_matches ++ href_first_matches)
+    |> Enum.find_value(fn {rel, href} ->
+      rel_down = String.downcase(rel || "")
+
+      if String.contains?(rel_down, "icon") do
+        href
+      else
+        nil
+      end
+    end)
+  end
+
+  defp icon_href(_html), do: nil
 
   defp absolute_url(nil, _base), do: nil
 

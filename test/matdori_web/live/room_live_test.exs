@@ -160,6 +160,11 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     assert has_element?(
              view,
+             "#room-open-source-link[href='https://example.com/posts/hello-world']"
+           )
+
+    assert has_element?(
+             view,
              "#preview-card-source[href='https://example.com/posts/hello-world']"
            )
 
