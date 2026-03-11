@@ -910,7 +910,7 @@ defmodule MatdoriWeb.RoomLive do
               <div
                 :if={!@post.hidden}
                 id="embed-highlight-fab"
-                class="fixed bottom-5 right-5 z-40 sm:bottom-7 sm:right-7"
+                class="absolute bottom-5 right-5 z-40 sm:bottom-7 sm:right-7"
               >
                 <button
                   id="embed-highlight-mode-toggle"
