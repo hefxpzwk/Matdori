@@ -93,7 +93,12 @@ defmodule MatdoriWeb.MyPageLiveTest do
     assert has_element?(view, "#my-created-view-count-#{created_post.id}")
     assert has_element?(view, "#my-created-live-count-#{created_post.id}")
     assert has_element?(view, "#my-created-comment-count-#{created_post.id}")
-    assert has_element?(view, "#my-created-delete-#{created_post.id}")
+
+    assert has_element?(
+             view,
+             "#my-created-delete-#{created_post.id}[data-confirm-delete][data-confirm-message]"
+           )
+
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
     refute has_element?(view, "#my-active-room-#{highlighted_post.id}")
 
@@ -103,7 +108,12 @@ defmodule MatdoriWeb.MyPageLiveTest do
 
     _html = view |> element("#my-tab-active") |> render_click()
     assert has_element?(view, "#my-active-room-#{highlighted_post.id}")
-    assert has_element?(view, "#my-active-delete-#{highlighted_post.id}")
+
+    assert has_element?(
+             view,
+             "#my-active-delete-#{highlighted_post.id}[data-confirm-delete][data-confirm-message]"
+           )
+
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
 
     _html = view |> element("#my-active-delete-#{highlighted_post.id}") |> render_click()

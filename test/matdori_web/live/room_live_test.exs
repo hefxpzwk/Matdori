@@ -103,6 +103,11 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     assert has_element?(view, "#room-comment-#{comment.id}")
 
+    assert has_element?(
+             view,
+             "#room-comment-delete-#{comment.id}[data-confirm-delete][data-confirm-message]"
+           )
+
     view
     |> element("#room-comment-delete-#{comment.id}")
     |> render_click()

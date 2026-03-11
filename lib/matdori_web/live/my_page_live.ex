@@ -656,6 +656,7 @@ defmodule MatdoriWeb.MyPageLive do
               id={"#{@id_prefix}-delete-#{post.id}"}
               type="button"
               data-confirm-delete
+              data-confirm-message="삭제할까요?"
               phx-click={@delete_event}
               phx-value-post_id={post.id}
               class="my-feed-delete-btn absolute right-2 top-2 z-20"

@@ -1078,10 +1078,15 @@ defmodule Matdori.Collab do
     |> Repo.insert()
   end
 
-  def soft_delete_comment(comment_id, session_id) do
+  def soft_delete_comment(comment_id, session_id, google_uid \\ nil)
+
+  def soft_delete_comment(comment_id, session_id, google_uid) do
+    uid = normalize_google_uid(google_uid)
+
     with %Comment{} = comment <- Repo.get(Comment, comment_id),
-         true <- comment.session_id == session_id,
-         true <- DateTime.diff(DateTime.utc_now(), comment.inserted_at, :minute) <= 5 do
+         true <-
+           comment.session_id == session_id or
+             (is_binary(uid) and is_binary(comment.google_uid) and comment.google_uid == uid) do
       comment
       |> Comment.changeset(%{deleted_at: DateTime.utc_now(), body: "[deleted]"})
       |> Repo.update()
@@ -1090,6 +1095,36 @@ defmodule Matdori.Collab do
       false -> {:error, :forbidden}
     end
   end
+
+  def soft_delete_room_comment(post_id, comment_id, session_id, google_uid \\ nil)
+
+  def soft_delete_room_comment(post_id, comment_id, session_id, google_uid)
+      when is_integer(post_id) and is_integer(comment_id) and is_binary(session_id) do
+    uid = normalize_google_uid(google_uid)
+
+    with %Comment{} = comment <-
+           Repo.one(
+             from c in Comment,
+               where:
+                 c.id == ^comment_id and
+                   c.post_id == ^post_id and
+                   is_nil(c.highlight_id) and
+                   is_nil(c.overlay_highlight_id)
+           ),
+         true <-
+           comment.session_id == session_id or
+             (is_binary(uid) and is_binary(comment.google_uid) and comment.google_uid == uid) do
+      comment
+      |> Comment.changeset(%{deleted_at: DateTime.utc_now(), body: "[deleted]"})
+      |> Repo.update()
+    else
+      nil -> {:error, :not_found}
+      false -> {:error, :forbidden}
+    end
+  end
+
+  def soft_delete_room_comment(_post_id, _comment_id, _session_id, _google_uid),
+    do: {:error, :invalid_argument}
 
   def toggle_reaction(post_id, session_id, kind) when kind in @reaction_kinds,
     do: toggle_reaction(post_id, session_id, kind, nil)

@@ -33,49 +33,6 @@ import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 
-const deleteConfirmMessage = "Are you sure you want to delete this?"
-
-function resolveDeleteTarget(target) {
-  if (!(target instanceof Element)) {
-    return null
-  }
-
-  return target.closest(
-    "[data-confirm-delete], [data-overlay-comment-delete='true'], [phx-click], button[id*='delete'], a[id*='delete']"
-  )
-}
-
-function requiresDeleteConfirmation(element) {
-  if (!(element instanceof HTMLElement)) {
-    return false
-  }
-
-  if (element.hasAttribute("data-confirm-delete") || element.dataset.overlayCommentDelete === "true") {
-    return true
-  }
-
-  const phxClick = element.getAttribute("phx-click") || ""
-  if (phxClick.toLowerCase().includes("delete")) {
-    return true
-  }
-
-  const id = element.id || ""
-  return id.toLowerCase().includes("delete")
-}
-
-window.addEventListener("click", (event) => {
-  const target = resolveDeleteTarget(event.target)
-
-  if (!target || !requiresDeleteConfirmation(target)) {
-    return
-  }
-
-  if (!window.confirm(deleteConfirmMessage)) {
-    event.preventDefault()
-    event.stopImmediatePropagation()
-  }
-}, true)
-
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
@@ -95,6 +52,22 @@ topbar.config({barColors: {0: "#ffffff"}, shadowColor: "rgba(255, 255, 255, 0.3)
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 window.addEventListener("matdori:history-back", _event => window.history.back())
+window.addEventListener("click", event => {
+  const target = event.target instanceof HTMLElement ? event.target.closest("[data-confirm-delete][phx-click]") : null
+  if (!(target instanceof HTMLElement)) {
+    return
+  }
+
+  const customMessage = target.dataset.confirmMessage
+  const legacyMessage = target.dataset.confirm
+  const message = customMessage && customMessage.trim() !== ""
+    ? customMessage
+    : (legacyMessage && legacyMessage.trim() !== "" ? legacyMessage : "삭제할까요?")
+  if (!window.confirm(message)) {
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+}, true)
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

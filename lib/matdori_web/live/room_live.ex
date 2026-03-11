@@ -5,6 +5,7 @@ defmodule MatdoriWeb.RoomLive do
   alias Matdori.Embed
   alias Matdori.RateLimiter
   alias MatdoriWeb.Presence
+  alias Phoenix.LiveView.JS
 
   @cursor_limit 20
   @cursor_note_limit 30
@@ -393,7 +394,14 @@ defmodule MatdoriWeb.RoomLive do
     with true <- socket.assigns.authenticated,
          :ok <- RateLimiter.allow?(socket.assigns.session_id, :delete_comment, @action_limit),
          {parsed, ""} <- Integer.parse(id),
-         {:ok, _} <- Collab.soft_delete_comment(parsed, socket.assigns.session_id) do
+         %{id: post_id} <- socket.assigns.post,
+         {:ok, _} <-
+           Collab.soft_delete_room_comment(
+             post_id,
+             parsed,
+             socket.assigns.session_id,
+             socket.assigns.google_uid
+           ) do
       broadcast_refresh(socket)
       {:noreply, reload_current_room(socket)}
     else
@@ -401,7 +409,7 @@ defmodule MatdoriWeb.RoomLive do
         login_required_reply(socket)
 
       {:error, :forbidden} ->
-        {:noreply, put_flash(socket, :error, "You can only delete your own recent comments.")}
+        {:noreply, put_flash(socket, :error, "You can only delete your own comments.")}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Unable to delete comment.")}
@@ -776,6 +784,7 @@ defmodule MatdoriWeb.RoomLive do
                                   id="embed-highlight-delete"
                                   type="button"
                                   data-confirm-delete
+                                  data-confirm-message="하이라이트를 삭제할까요?"
                                   class="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
                                 >
                                   <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete Highlight
@@ -952,15 +961,17 @@ defmodule MatdoriWeb.RoomLive do
               >
                 <button
                   :if={
-                    @authenticated and comment.session_id == @session_id and
-                      comment.body != "[deleted]"
+                    @authenticated and
+                      (comment.session_id == @session_id or
+                         (is_binary(@google_uid) and is_binary(comment.google_uid) and
+                            comment.google_uid == @google_uid)) and comment.body != "[deleted]"
                   }
                   id={"room-comment-delete-#{comment.id}"}
                   type="button"
                   data-confirm-delete
-                  phx-click="delete_comment"
-                  phx-value-id={comment.id}
-                  class="absolute right-0 top-0 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"
+                  data-confirm-message="댓글을 삭제할까요?"
+                  phx-click={JS.push("delete_comment", value: %{id: to_string(comment.id)})}
+                  class="absolute right-0 top-0 z-10 inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-400"
                 >
                   <.icon name="hero-trash" class="h-3.5 w-3.5" /> Delete
                 </button>

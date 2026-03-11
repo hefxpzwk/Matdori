@@ -714,6 +714,76 @@ defmodule Matdori.CollabTest do
     assert Enum.all?(remaining_overlay_comments, &(&1.google_uid == other_uid))
   end
 
+  test "soft_delete_comment/3 allows deleting own room comment by google_uid" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, comment} =
+             Collab.create_room_comment(post.id, %{
+               "session_id" => "writer-old-session",
+               "google_uid" => "google-writer",
+               "display_name" => "Writer",
+               "color" => "#111111",
+               "body" => "delete me"
+             })
+
+    assert {:ok, deleted} =
+             Collab.soft_delete_comment(comment.id, "writer-new-session", "google-writer")
+
+    assert deleted.body == "[deleted]"
+    assert deleted.deleted_at != nil
+    assert Collab.list_room_comments(post.id) == []
+  end
+
+  test "soft_delete_comment/3 rejects deleting another user's room comment" do
+    post = insert_post_with_snapshot()
+
+    assert {:ok, comment} =
+             Collab.create_room_comment(post.id, %{
+               "session_id" => "owner-session",
+               "google_uid" => "google-owner",
+               "display_name" => "Owner",
+               "color" => "#111111",
+               "body" => "owner comment"
+             })
+
+    assert {:error, :forbidden} =
+             Collab.soft_delete_comment(comment.id, "attacker-session", "google-attacker")
+  end
+
+  test "soft_delete_room_comment/4 deletes only room comment in given post" do
+    post = insert_post_with_snapshot()
+    other_post = insert_post_with_snapshot()
+
+    assert {:ok, comment} =
+             Collab.create_room_comment(post.id, %{
+               "session_id" => "writer-session",
+               "google_uid" => "google-writer",
+               "display_name" => "Writer",
+               "color" => "#111111",
+               "body" => "delete me"
+             })
+
+    assert {:error, :not_found} =
+             Collab.soft_delete_room_comment(
+               other_post.id,
+               comment.id,
+               "writer-session",
+               "google-writer"
+             )
+
+    assert {:ok, deleted} =
+             Collab.soft_delete_room_comment(
+               post.id,
+               comment.id,
+               "writer-session",
+               "google-writer"
+             )
+
+    assert deleted.body == "[deleted]"
+    assert deleted.deleted_at != nil
+    assert Collab.list_room_comments(post.id) == []
+  end
+
   test "sync_configured_account_posts/1 imports posts and latest order follows tweet_posted_at" do
     older = System.unique_integer([:positive])
     newer = System.unique_integer([:positive])

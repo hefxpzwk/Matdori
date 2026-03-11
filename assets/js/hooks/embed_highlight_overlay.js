@@ -1123,6 +1123,10 @@ const EmbedHighlightOverlay = {
         return
       }
 
+      if (!window.confirm("댓글을 삭제할까요?")) {
+        return
+      }
+
       this.deleteOverlayComment(parsed)
     }
 
@@ -1140,6 +1144,10 @@ const EmbedHighlightOverlay = {
       const entry = this.currentSelectionEntry()
 
       if (!entry || !entry.isMine) {
+        return
+      }
+
+      if (!window.confirm("하이라이트를 삭제할까요?")) {
         return
       }
 
