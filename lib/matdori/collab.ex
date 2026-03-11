@@ -90,22 +90,52 @@ defmodule Matdori.Collab do
     if uid do
       case Repo.get_by(UserProfile, google_uid: uid) do
         nil ->
-          %{display_name: nil, interests: [], color: nil}
+          %{display_name: nil, interests: [], color: nil, avatar_url: nil}
 
         profile ->
           %{
             display_name: normalize_profile_display_name(profile.display_name),
             interests:
               normalize_interests(profile.interests || infer_interests(profile.interest)),
-            color: normalize_profile_color(profile.color)
+            color: normalize_profile_color(profile.color),
+            avatar_url: normalize_profile_avatar_url(profile.avatar_url)
           }
       end
     else
-      %{display_name: nil, interests: [], color: nil}
+      %{display_name: nil, interests: [], color: nil, avatar_url: nil}
     end
   end
 
-  def get_profile_by_google_uid(_google_uid), do: %{display_name: nil, interests: [], color: nil}
+  def get_profile_by_google_uid(_google_uid),
+    do: %{display_name: nil, interests: [], color: nil, avatar_url: nil}
+
+  def list_profiles_by_google_uids(google_uids) when is_list(google_uids) do
+    normalized_uids =
+      google_uids
+      |> Enum.map(&normalize_google_uid/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    if normalized_uids == [] do
+      %{}
+    else
+      Repo.all(
+        from p in UserProfile,
+          where: p.google_uid in ^normalized_uids,
+          select: {p.google_uid, p.display_name, p.color, p.avatar_url}
+      )
+      |> Map.new(fn {uid, display_name, color, avatar_url} ->
+        {uid,
+         %{
+           display_name: normalize_profile_display_name(display_name),
+           color: normalize_profile_color(color),
+           avatar_url: normalize_profile_avatar_url(avatar_url)
+         }}
+      end)
+    end
+  end
+
+  def list_profiles_by_google_uids(_google_uids), do: %{}
 
   def get_interest_by_google_uid(google_uid) do
     google_uid
@@ -122,11 +152,13 @@ defmodule Matdori.Collab do
       cleaned_name = normalize_profile_display_name(attrs["display_name"] || attrs[:display_name])
       cleaned_interests = normalize_interests(attrs["interests"] || attrs[:interests])
       cleaned_color = normalize_profile_color(attrs["color"] || attrs[:color])
+      cleaned_avatar_url = normalize_profile_avatar_url(attrs["avatar_url"] || attrs[:avatar_url])
       fallback_interest = List.first(cleaned_interests) || ""
 
       profile = Repo.get_by(UserProfile, google_uid: uid) || %UserProfile{google_uid: uid}
       resolved_name = cleaned_name || normalize_profile_display_name(profile.display_name)
       resolved_color = cleaned_color || normalize_profile_color(profile.color) || "#3b82f6"
+      resolved_avatar_url = cleaned_avatar_url || normalize_profile_avatar_url(profile.avatar_url)
 
       Multi.new()
       |> Multi.insert_or_update(
@@ -135,6 +167,7 @@ defmodule Matdori.Collab do
           google_uid: uid,
           display_name: resolved_name,
           color: resolved_color,
+          avatar_url: resolved_avatar_url,
           interests: cleaned_interests,
           interest: fallback_interest
         })
@@ -158,6 +191,53 @@ defmodule Matdori.Collab do
 
   def upsert_profile_by_google_uid(_google_uid, _attrs), do: {:error, :invalid_google_uid}
 
+  def update_display_name_by_google_uid(google_uid, display_name)
+      when is_binary(google_uid) and is_binary(display_name) do
+    uid = normalize_google_uid(google_uid)
+    cleaned_name = normalize_profile_display_name(display_name)
+
+    cond do
+      is_nil(uid) ->
+        {:error, :invalid_google_uid}
+
+      is_nil(cleaned_name) ->
+        {:error, :invalid_display_name}
+
+      true ->
+        profile = Repo.get_by(UserProfile, google_uid: uid) || %UserProfile{google_uid: uid}
+        resolved_color = normalize_profile_color(profile.color) || "#3b82f6"
+        resolved_avatar_url = normalize_profile_avatar_url(profile.avatar_url)
+
+        resolved_interests =
+          normalize_interests(profile.interests || infer_interests(profile.interest))
+
+        Multi.new()
+        |> Multi.insert_or_update(
+          :profile,
+          UserProfile.changeset(profile, %{
+            google_uid: uid,
+            display_name: cleaned_name,
+            color: resolved_color,
+            avatar_url: resolved_avatar_url,
+            interests: resolved_interests,
+            interest: List.first(resolved_interests) || ""
+          })
+        )
+        |> Multi.run(:sync_display_names, fn _repo, _changes ->
+          sync_display_name_for_google_uid(uid, cleaned_name)
+        end)
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{profile: saved_profile}} -> {:ok, saved_profile}
+          {:error, :profile, reason, _changes} -> {:error, reason}
+          {:error, _step, reason, _changes} -> {:error, reason}
+        end
+    end
+  end
+
+  def update_display_name_by_google_uid(_google_uid, _display_name),
+    do: {:error, :invalid_google_uid}
+
   def upsert_interest_by_google_uid(google_uid, interest) when is_binary(google_uid) do
     interests = normalize_interests(interest)
 
@@ -176,12 +256,15 @@ defmodule Matdori.Collab do
     uid = normalize_google_uid(google_uid)
 
     if uid do
-      Repo.all(
-        from p in Post,
-          where: p.hidden == false and p.creator_google_uid == ^uid,
-          order_by: [desc: p.inserted_at, desc: p.id],
-          limit: ^limit
+      from(
+        p in Post,
+        where: p.hidden == false and p.creator_google_uid == ^uid,
+        order_by: [desc: p.inserted_at, desc: p.id],
+        limit: ^limit
       )
+      |> with_post_metrics()
+      |> Repo.all()
+      |> Repo.preload(:current_snapshot)
     else
       []
     end
@@ -202,14 +285,17 @@ defmodule Matdori.Collab do
           group_by: h.post_id,
           select: %{post_id: h.post_id, latest_liked_at: max(h.inserted_at)}
 
-      Repo.all(
-        from p in Post,
-          join: liked in subquery(liked_posts_subquery),
-          on: liked.post_id == p.id,
-          where: p.hidden == false,
-          order_by: [desc: liked.latest_liked_at, desc: p.inserted_at, desc: p.id],
-          limit: ^limit
+      from(
+        p in Post,
+        join: liked in subquery(liked_posts_subquery),
+        on: liked.post_id == p.id,
+        where: p.hidden == false,
+        order_by: [desc: liked.latest_liked_at, desc: p.inserted_at, desc: p.id],
+        limit: ^limit
       )
+      |> with_post_metrics()
+      |> Repo.all()
+      |> Repo.preload(:current_snapshot)
     else
       []
     end
@@ -259,14 +345,17 @@ defmodule Matdori.Collab do
           group_by: u.post_id,
           select: %{post_id: u.post_id, latest_highlighted_at: max(u.latest_highlighted_at)}
 
-      Repo.all(
-        from p in Post,
-          join: highlighted in subquery(highlighted_posts_subquery),
-          on: highlighted.post_id == p.id,
-          where: p.hidden == false,
-          order_by: [desc: highlighted.latest_highlighted_at, desc: p.inserted_at, desc: p.id],
-          limit: ^limit
+      from(
+        p in Post,
+        join: highlighted in subquery(highlighted_posts_subquery),
+        on: highlighted.post_id == p.id,
+        where: p.hidden == false,
+        order_by: [desc: highlighted.latest_highlighted_at, desc: p.inserted_at, desc: p.id],
+        limit: ^limit
       )
+      |> with_post_metrics()
+      |> Repo.all()
+      |> Repo.preload(:current_snapshot)
     else
       []
     end
@@ -587,6 +676,7 @@ defmodule Matdori.Collab do
           id: c.id,
           highlight_id: h.highlight_key,
           session_id: c.session_id,
+          google_uid: c.google_uid,
           display_name: c.display_name,
           color: c.color,
           body: c.body,
@@ -1268,7 +1358,13 @@ defmodule Matdori.Collab do
     case URI.parse(String.trim(url)) do
       %URI{scheme: scheme, host: host} = parsed
       when scheme in ["http", "https"] and is_binary(host) and host != "" ->
-        URI.to_string(parsed)
+        normalized = URI.to_string(parsed)
+
+        if String.length(normalized) <= 255 do
+          normalized
+        else
+          nil
+        end
 
       _ ->
         nil
@@ -1308,7 +1404,7 @@ defmodule Matdori.Collab do
 
   defp maybe_fetch_link_preview(url) do
     case Embed.classify(url).mode do
-      :native_embed -> %{}
+      :native_embed -> LinkPreview.fetch(url)
       :preview_only -> LinkPreview.fetch(url)
     end
   end
@@ -1361,6 +1457,24 @@ defmodule Matdori.Collab do
       }
   end
 
+  defp with_post_metrics(query) do
+    from p in query,
+      left_join: like_counts in subquery(reaction_counts_subquery("like")),
+      on: like_counts.post_id == p.id,
+      left_join: dislike_counts in subquery(reaction_counts_subquery("dislike")),
+      on: dislike_counts.post_id == p.id,
+      left_join: view_counts in subquery(view_counts_subquery()),
+      on: view_counts.post_id == p.id,
+      left_join: room_comment_counts in subquery(room_comment_counts_subquery()),
+      on: room_comment_counts.post_id == p.id,
+      select_merge: %{
+        like_count: coalesce(like_counts.reaction_count, 0),
+        dislike_count: coalesce(dislike_counts.reaction_count, 0),
+        view_count: coalesce(view_counts.view_count, 0),
+        comment_count: coalesce(room_comment_counts.comment_count, 0)
+      }
+  end
+
   defp reaction_counts_subquery(kind) when kind in @reaction_kinds do
     from h in PostHeart,
       where: h.kind == ^kind,
@@ -1372,6 +1486,13 @@ defmodule Matdori.Collab do
     from v in PostView,
       group_by: v.post_id,
       select: %{post_id: v.post_id, view_count: count(v.id)}
+  end
+
+  defp room_comment_counts_subquery do
+    from c in Comment,
+      where: not is_nil(c.post_id) and is_nil(c.deleted_at),
+      group_by: c.post_id,
+      select: %{post_id: c.post_id, comment_count: count(c.id)}
   end
 
   defp normalize_list_sort(sort) when sort in ["latest", "likes", "views"], do: sort
@@ -1458,6 +1579,15 @@ defmodule Matdori.Collab do
   end
 
   defp normalize_profile_color(_value), do: nil
+
+  defp normalize_profile_avatar_url(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed |> String.slice(0, 1000)
+    end
+  end
+
+  defp normalize_profile_avatar_url(_value), do: nil
 
   defp normalize_interests(value) when is_binary(value) do
     value

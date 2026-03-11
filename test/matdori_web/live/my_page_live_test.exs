@@ -74,8 +74,8 @@ defmodule MatdoriWeb.MyPageLiveTest do
     {:ok, view, _html} = live(conn, ~p"/me")
 
     assert has_element?(view, "#my-page")
-    assert has_element?(view, "#profile-topbar-back")
-    assert has_element?(view, "#profile-topbar-title", "Profile")
+    refute has_element?(view, "#profile-topbar-back")
+    refute has_element?(view, "#profile-topbar-title")
     assert has_element?(view, "#my-profile-header")
     assert has_element?(view, "#my-profile-name", "My Page User")
     assert has_element?(view, "#my-profile-interest")
@@ -88,6 +88,11 @@ defmodule MatdoriWeb.MyPageLiveTest do
     refute has_element?(view, "#my-profile-edit-modal")
 
     assert has_element?(view, "#my-created-room-#{created_post.id}")
+    assert has_element?(view, "#my-created-like-count-#{created_post.id}")
+    assert has_element?(view, "#my-created-dislike-count-#{created_post.id}")
+    assert has_element?(view, "#my-created-view-count-#{created_post.id}")
+    assert has_element?(view, "#my-created-live-count-#{created_post.id}")
+    assert has_element?(view, "#my-created-comment-count-#{created_post.id}")
     assert has_element?(view, "#my-created-delete-#{created_post.id}")
     refute has_element?(view, "#my-liked-room-#{liked_post.id}")
     refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
@@ -139,8 +144,6 @@ defmodule MatdoriWeb.MyPageLiveTest do
 
     assert %{color: "#ef4444"} = Collab.get_profile_by_google_uid(google_uid)
 
-    _html = view |> element("#profile-topbar-title") |> render_click()
-
     refute has_element?(view, "#my-highlighted-room-#{highlighted_post.id}")
     assert has_element?(view, "#my-profile-name", "수정된 유저")
     assert has_element?(view, "#my-profile-interest", "AI · 디자인 시스템")
@@ -161,6 +164,46 @@ defmodule MatdoriWeb.MyPageLiveTest do
 
     assert render(view) =~ "Please enter a username."
     assert has_element?(view, "#my-profile-edit-modal")
+  end
+
+  test "profile color is applied only after save", %{conn: conn} do
+    google_uid = "google-my-page-deferred-color-user"
+
+    conn =
+      google_auth_conn(conn, %{
+        "google_uid" => google_uid,
+        "google_name" => "Deferred Color User",
+        "display_name" => "Deferred Color User"
+      })
+
+    assert {:ok, _profile} =
+             Collab.upsert_profile_by_google_uid(google_uid, %{
+               display_name: "Deferred Color User",
+               interests: ["AI"],
+               color: "#3b82f6"
+             })
+
+    {:ok, view, _html} = live(conn, ~p"/me")
+
+    assert has_element?(view, "#my-profile-color .my-profile-color-code", "#3b82f6")
+
+    _html = view |> element("#my-profile-edit-toggle") |> render_click()
+    _html = view |> element("#my-profile-color-preset-ef4444") |> render_click()
+
+    assert has_element?(view, "#my-profile-color .my-profile-color-code", "#3b82f6")
+
+    _html =
+      view
+      |> form("#my-profile-edit-form", %{
+        "profile" => %{
+          "display_name" => "Deferred Color User",
+          "interests_input" => "AI",
+          "color" => "#ef4444"
+        }
+      })
+      |> render_submit()
+
+    assert has_element?(view, "#my-profile-color .my-profile-color-code", "#ef4444")
   end
 
   test "my page includes overlay-highlighted rooms", %{conn: conn} do

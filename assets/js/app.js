@@ -28,6 +28,7 @@ import MasonryGrid from "./hooks/masonry_grid"
 import SnapshotCanvas from "./hooks/snapshot_canvas"
 import RemoteCursors from "./hooks/remote_cursors"
 import EmbedHighlightOverlay from "./hooks/embed_highlight_overlay"
+import RoomCommentEnterSubmit from "./hooks/room_comment_enter_submit"
 import topbar from "../vendor/topbar"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
@@ -41,6 +42,7 @@ const liveSocket = new LiveSocket("/live", Socket, {
     SnapshotCanvas,
     RemoteCursors,
     EmbedHighlightOverlay,
+    RoomCommentEnterSubmit,
   },
 })
 

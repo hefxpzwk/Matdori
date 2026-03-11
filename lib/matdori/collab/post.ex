@@ -19,6 +19,7 @@ defmodule Matdori.Collab.Post do
     field :like_count, :integer, virtual: true, default: 0
     field :dislike_count, :integer, virtual: true, default: 0
     field :view_count, :integer, virtual: true, default: 0
+    field :comment_count, :integer, virtual: true, default: 0
 
     belongs_to :current_snapshot, PostSnapshot
     has_many :snapshots, PostSnapshot

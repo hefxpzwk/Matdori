@@ -30,6 +30,15 @@ function normalizeComment(value) {
   return value.trim().slice(0, MAX_COMMENT_LENGTH)
 }
 
+function normalizeProfileUrl(value) {
+  if (typeof value !== "string") {
+    return ""
+  }
+
+  const trimmed = value.trim()
+  return trimmed.startsWith("/users/") ? trimmed : ""
+}
+
 function readMeta(presence) {
   if (!presence || !Array.isArray(presence.metas) || presence.metas.length === 0) {
     return null
@@ -371,14 +380,36 @@ const EmbedHighlightOverlay = {
         left.className = "inline-flex min-w-0 items-center gap-2"
 
         if (comment.avatar_url) {
-          const avatar = document.createElement("img")
-          avatar.src = comment.avatar_url
-          avatar.alt = normalizeName(comment.display_name)
-          avatar.className = "h-5 w-5 rounded-full border border-slate-200 object-cover"
-          left.appendChild(avatar)
+          if (comment.profile_url) {
+            const avatarLink = document.createElement("a")
+            avatarLink.href = comment.profile_url
+            avatarLink.className = "inline-flex"
+
+            const avatar = document.createElement("img")
+            avatar.src = comment.avatar_url
+            avatar.alt = normalizeName(comment.display_name)
+            avatar.className = "h-5 w-5 rounded-full border border-slate-200 object-cover"
+            avatarLink.appendChild(avatar)
+            left.appendChild(avatarLink)
+          } else {
+            const avatar = document.createElement("img")
+            avatar.src = comment.avatar_url
+            avatar.alt = normalizeName(comment.display_name)
+            avatar.className = "h-5 w-5 rounded-full border border-slate-200 object-cover"
+            left.appendChild(avatar)
+          }
         }
 
-        left.appendChild(author)
+        if (comment.profile_url) {
+          const authorLink = document.createElement("a")
+          authorLink.href = comment.profile_url
+          authorLink.className = "min-w-0 truncate text-xs font-semibold text-slate-700 underline-offset-2 hover:text-teal-700 hover:underline"
+          authorLink.textContent = normalizeName(comment.display_name)
+          left.appendChild(authorLink)
+        } else {
+          left.appendChild(author)
+        }
+
         head.appendChild(left)
 
         const right = document.createElement("div")
@@ -514,7 +545,17 @@ const EmbedHighlightOverlay = {
       this.commentPanel.classList.remove("hidden")
 
       if (this.commentMeta) {
-        this.commentMeta.textContent = `${entry.payload.name}님의 하이라이트`
+        this.commentMeta.innerHTML = ""
+
+        if (entry.payload.profile_url) {
+          const link = document.createElement("a")
+          link.href = entry.payload.profile_url
+          link.className = "underline-offset-2 hover:text-teal-700 hover:underline"
+          link.textContent = `${entry.payload.name}님의 하이라이트`
+          this.commentMeta.appendChild(link)
+        } else {
+          this.commentMeta.textContent = `${entry.payload.name}님의 하이라이트`
+        }
       }
 
       this.renderCommentList(entry)
@@ -813,12 +854,21 @@ const EmbedHighlightOverlay = {
 
         const existing = nextHighlightsBySession.get(sessionIdRaw)
         if (!existing) {
-          nextHighlightsBySession.set(sessionIdRaw, { color, name, zones: [normalized] })
+          nextHighlightsBySession.set(sessionIdRaw, {
+            color,
+            name,
+            profile_url: normalizeProfileUrl(zone.profile_url),
+            zones: [normalized],
+          })
           return
         }
 
         if (existing.zones.length < 40) {
           existing.zones.push(normalized)
+        }
+
+        if (!existing.profile_url) {
+          existing.profile_url = normalizeProfileUrl(zone.profile_url)
         }
       })
 
@@ -854,6 +904,7 @@ const EmbedHighlightOverlay = {
           session_id: typeof comment.session_id === "string" ? comment.session_id : "",
           display_name: normalizeName(comment.display_name),
           color: normalizeColor(comment.color, "#64748b"),
+          profile_url: normalizeProfileUrl(comment.profile_url),
           body,
           avatar_url: typeof comment.avatar_url === "string" ? comment.avatar_url.trim() : "",
           inserted_at: typeof comment.inserted_at === "string" ? comment.inserted_at : "",
@@ -1056,12 +1107,13 @@ const EmbedHighlightOverlay = {
     }
 
     this.onCommentListClick = (event) => {
-      event.preventDefault()
       const target = event.target instanceof HTMLElement ? event.target.closest("[data-overlay-comment-delete='true']") : null
 
       if (!(target instanceof HTMLElement)) {
         return
       }
+
+      event.preventDefault()
 
       const commentIdRaw = target.dataset.commentId || ""
       const parsed = Number.parseInt(commentIdRaw, 10)

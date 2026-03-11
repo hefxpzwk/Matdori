@@ -51,7 +51,8 @@ defmodule MatdoriWeb.RoomLiveTest do
   end
 
   test "room page allows posting room-level comments at the bottom", %{conn: conn} do
-    conn = google_auth_conn(conn)
+    google_uid = "room-comment-link-user"
+    conn = google_auth_conn(conn, %{"google_uid" => google_uid})
     id = Integer.to_string(System.unique_integer([:positive]))
 
     assert {:ok, post} =
@@ -75,6 +76,8 @@ defmodule MatdoriWeb.RoomLiveTest do
 
     [comment | _] = Collab.list_room_comments(post.id)
     assert comment.body == "방 전체에 대한 의견입니다"
+    assert has_element?(view, "#room-comment-profile-#{comment.id}[href='/users/#{google_uid}']")
+    assert has_element?(view, "#room-comment-author-#{comment.id}[href='/users/#{google_uid}']")
   end
 
   test "x room shows native embed status", %{conn: conn} do
@@ -151,7 +154,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     {:ok, view, _html} = live(conn, ~p"/rooms/#{post.id}")
 
     assert has_element?(view, "#room-embed-status")
-    assert render(view) =~ "Preview"
+    assert render(view) =~ "OG Preview"
     assert has_element?(view, "#link-preview-card")
     assert has_element?(view, "#room-embed-highlight-overlay")
 
@@ -228,6 +231,11 @@ defmodule MatdoriWeb.RoomLiveTest do
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
 
+    assert_push_event(view_a, "overlay_highlights_state", %{highlights: _})
+    assert_push_event(view_a, "overlay_highlight_comments_state", %{comments: _})
+    assert_push_event(view_b, "overlay_highlights_state", %{highlights: _})
+    assert_push_event(view_b, "overlay_highlight_comments_state", %{comments: _})
+
     presence_diff = %Phoenix.Socket.Broadcast{
       topic: "presence:test",
       event: "presence_diff",
@@ -276,8 +284,17 @@ defmodule MatdoriWeb.RoomLiveTest do
                "room-live-overlay-sync"
              )
 
-    conn_a = google_auth_conn(conn, %{"session_id" => "overlay-session-a"})
-    conn_b = google_auth_conn(conn, %{"session_id" => "overlay-session-b"})
+    conn_a =
+      google_auth_conn(conn, %{
+        "session_id" => "overlay-session-a",
+        "google_uid" => "overlay-google-a"
+      })
+
+    conn_b =
+      google_auth_conn(conn, %{
+        "session_id" => "overlay-session-b",
+        "google_uid" => "overlay-google-b"
+      })
 
     {:ok, view_a, _html} = live(conn_a, ~p"/rooms/#{post.id}")
     {:ok, view_b, _html} = live(conn_b, ~p"/rooms/#{post.id}")
@@ -377,6 +394,7 @@ defmodule MatdoriWeb.RoomLiveTest do
     assert Enum.any?(highlights_from_other, fn highlight ->
              highlight.session_id == "overlay-persist-a" and
                highlight.id == "persist-1" and
+               String.starts_with?(highlight.profile_url || "", "/users/google-") and
                highlight.comment == "리로드 후에도 남아야 함"
            end)
 

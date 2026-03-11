@@ -28,6 +28,13 @@ defmodule MatdoriWeb.AuthController do
     display_name = profile_or_google_display_name(auth.uid, auth.info.name, auth.info.email)
     color = profile_or_default_color(auth.uid)
 
+    _ =
+      Collab.upsert_profile_by_google_uid(auth.uid, %{
+        display_name: display_name,
+        color: color,
+        avatar_url: auth.info.image
+      })
+
     conn
     |> configure_session(renew: true)
     |> put_session(:google_uid, auth.uid)

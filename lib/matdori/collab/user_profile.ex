@@ -6,6 +6,7 @@ defmodule Matdori.Collab.UserProfile do
     field :google_uid, :string
     field :display_name, :string
     field :color, :string
+    field :avatar_url, :string
     field :interest, :string, default: ""
     field :interests, {:array, :string}, default: []
 
@@ -14,11 +15,12 @@ defmodule Matdori.Collab.UserProfile do
 
   def changeset(profile, attrs) do
     profile
-    |> cast(attrs, [:google_uid, :display_name, :color, :interest, :interests])
+    |> cast(attrs, [:google_uid, :display_name, :color, :avatar_url, :interest, :interests])
     |> validate_required([:google_uid])
     |> validate_length(:google_uid, max: 200)
     |> validate_length(:display_name, max: 30)
     |> validate_format(:color, ~r/^#[0-9a-fA-F]{6}$/)
+    |> validate_length(:avatar_url, max: 1000)
     |> validate_length(:interest, max: 160)
     |> validate_change(:interests, fn :interests, interests ->
       cond do

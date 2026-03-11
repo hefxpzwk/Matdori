@@ -36,6 +36,7 @@ defmodule MatdoriWeb.Router do
     live "/", ShareLive, :index
     live "/rooms", RoomIndexLive, :index
     live "/rooms/:post_id", RoomLive, :show
+    live "/users/:google_uid", UserProfileLive, :show
   end
 
   scope "/", MatdoriWeb do

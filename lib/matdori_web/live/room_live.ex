@@ -38,6 +38,7 @@ defmodule MatdoriWeb.RoomLive do
       |> assign(:room_comment_form, empty_room_comment_form())
       |> assign(:overlay_highlights, [])
       |> assign(:overlay_highlight_comments, [])
+      |> assign(:profile_overrides, %{})
       |> assign(:selected_highlight_id, nil)
       |> assign(:like_count, 0)
       |> assign(:dislike_count, 0)
@@ -140,12 +141,21 @@ defmodule MatdoriWeb.RoomLive do
           overlay_highlight_comments =
             Collab.list_overlay_highlight_comments(socket.assigns.post.id)
 
+          profile_overrides =
+            profile_overrides_for(
+              socket.assigns.room_comments,
+              socket.assigns.highlights,
+              overlay_highlights,
+              overlay_highlight_comments
+            )
+
           broadcast_overlay_highlights(socket.assigns.post.id)
 
           {:noreply,
            socket
            |> assign(:overlay_highlights, overlay_highlights)
            |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+           |> assign(:profile_overrides, profile_overrides)
            |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
 
         {:error, _reason} ->
@@ -197,12 +207,22 @@ defmodule MatdoriWeb.RoomLive do
            }) do
       overlay_highlights = Collab.list_overlay_highlights(post_id)
       overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
+
+      profile_overrides =
+        profile_overrides_for(
+          socket.assigns.room_comments,
+          socket.assigns.highlights,
+          overlay_highlights,
+          overlay_highlight_comments
+        )
+
       broadcast_overlay_highlights(post_id)
 
       {:noreply,
        socket
        |> assign(:overlay_highlights, overlay_highlights)
        |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+       |> assign(:profile_overrides, profile_overrides)
        |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
     else
       _ -> {:noreply, socket}
@@ -230,12 +250,22 @@ defmodule MatdoriWeb.RoomLive do
                ) do
           overlay_highlights = Collab.list_overlay_highlights(post_id)
           overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
+
+          profile_overrides =
+            profile_overrides_for(
+              socket.assigns.room_comments,
+              socket.assigns.highlights,
+              overlay_highlights,
+              overlay_highlight_comments
+            )
+
           broadcast_overlay_highlights(post_id)
 
           {:noreply,
            socket
            |> assign(:overlay_highlights, overlay_highlights)
            |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+           |> assign(:profile_overrides, profile_overrides)
            |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
         else
           _ -> {:noreply, socket}
@@ -457,6 +487,8 @@ defmodule MatdoriWeb.RoomLive do
       if cleaned == "" do
         {:noreply, put_flash(socket, :error, "Display name cannot be empty.")}
       else
+        _ = Collab.update_display_name_by_google_uid(socket.assigns.google_uid || "", cleaned)
+
         if socket.assigns.post do
           upsert_presence_meta(
             assign(socket, :display_name, cleaned),
@@ -467,7 +499,7 @@ defmodule MatdoriWeb.RoomLive do
         {:noreply,
          socket
          |> assign(:display_name, cleaned)
-         |> put_flash(:info, "Display name for this session was updated.")}
+         |> put_flash(:info, "Display name was updated across your comments and highlights.")}
       end
     else
       login_required_reply(socket)
@@ -505,10 +537,19 @@ defmodule MatdoriWeb.RoomLive do
       overlay_highlights = Collab.list_overlay_highlights(post_id)
       overlay_highlight_comments = Collab.list_overlay_highlight_comments(post_id)
 
+      profile_overrides =
+        profile_overrides_for(
+          socket.assigns.room_comments,
+          socket.assigns.highlights,
+          overlay_highlights,
+          overlay_highlight_comments
+        )
+
       {:noreply,
        socket
        |> assign(:overlay_highlights, overlay_highlights)
        |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+       |> assign(:profile_overrides, profile_overrides)
        |> push_overlay_highlight_states(overlay_highlights, overlay_highlight_comments)}
     else
       {:noreply, socket}
@@ -658,46 +699,7 @@ defmodule MatdoriWeb.RoomLive do
                                 </iframe>
                               </div>
                             <% else %>
-                              <div
-                                id="link-preview-card"
-                                class="overflow-hidden rounded-xl border border-slate-200 bg-white"
-                              >
-                                <a
-                                  id="preview-card-source"
-                                  href={@post.tweet_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  class="block transition hover:bg-slate-50"
-                                >
-                                  <div class="aspect-[16/9] w-full bg-zinc-100">
-                                    <img
-                                      :if={preview_image_url(@post)}
-                                      id="preview-card-image"
-                                      src={preview_image_url(@post)}
-                                      alt={display_title(@post)}
-                                      class="h-full w-full object-cover"
-                                      loading="lazy"
-                                    />
-                                    <div
-                                      :if={!preview_image_url(@post)}
-                                      class="flex h-full items-center justify-center text-xs text-zinc-500"
-                                    >
-                                      No image
-                                    </div>
-                                  </div>
-                                  <div class="space-y-1.5 p-3">
-                                    <p class="truncate text-sm font-bold text-slate-900">
-                                      {display_title(@post)}
-                                    </p>
-                                    <p class="text-xs leading-relaxed text-slate-600">
-                                      {preview_description(@post)}
-                                    </p>
-                                    <p class="truncate text-[11px] text-slate-500">
-                                      {@post.tweet_url}
-                                    </p>
-                                  </div>
-                                </a>
-                              </div>
+                              <.preview_card post={@post} />
                             <% end %>
                           <% end %>
 
@@ -905,6 +907,7 @@ defmodule MatdoriWeb.RoomLive do
                   field={@room_comment_form[:body]}
                   type="textarea"
                   id="room-comment-body"
+                  phx-hook="RoomCommentEnterSubmit"
                   placeholder="Leave a comment about the whole room"
                   rows="3"
                 />
@@ -950,29 +953,112 @@ defmodule MatdoriWeb.RoomLive do
 
                 <div class="relative pr-20 text-left">
                   <div class="flex items-center gap-2">
-                    <span
+                    <.link
+                      :if={user_profile_path_from(comment)}
                       id={"room-comment-profile-#{comment.id}"}
-                      class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
-                      style={"border-color: #{comment.color}; color: #{comment.color};"}
+                      navigate={user_profile_path_from(comment)}
+                      class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700 transition hover:scale-105"
+                      style={
+                        "border-color: #{resolved_comment_color(comment, @profile_overrides)}; color: #{resolved_comment_color(comment, @profile_overrides)};"
+                      }
                     >
                       <img
-                        :if={comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)}
-                        src={comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)}
-                        alt={comment.display_name}
+                        :if={
+                          comment_avatar_url(
+                            comment,
+                            @presence_members,
+                            @session_id,
+                            @avatar_url,
+                            @profile_overrides
+                          )
+                        }
+                        src={
+                          comment_avatar_url(
+                            comment,
+                            @presence_members,
+                            @session_id,
+                            @avatar_url,
+                            @profile_overrides
+                          )
+                        }
+                        alt={resolved_comment_display_name(comment, @profile_overrides)}
                         class="h-full w-full rounded-full object-cover"
                       />
                       <span :if={
-                        !comment_avatar_url(comment, @presence_members, @session_id, @avatar_url)
+                        !comment_avatar_url(
+                          comment,
+                          @presence_members,
+                          @session_id,
+                          @avatar_url,
+                          @profile_overrides
+                        )
                       }>
-                        {comment_profile_initial(comment.display_name)}
+                        {comment_profile_initial(
+                          resolved_comment_display_name(comment, @profile_overrides)
+                        )}
+                      </span>
+                    </.link>
+
+                    <span
+                      :if={!user_profile_path_from(comment)}
+                      id={"room-comment-profile-#{comment.id}"}
+                      class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-xs font-bold text-slate-700"
+                      style={
+                        "border-color: #{resolved_comment_color(comment, @profile_overrides)}; color: #{resolved_comment_color(comment, @profile_overrides)};"
+                      }
+                    >
+                      <img
+                        :if={
+                          comment_avatar_url(
+                            comment,
+                            @presence_members,
+                            @session_id,
+                            @avatar_url,
+                            @profile_overrides
+                          )
+                        }
+                        src={
+                          comment_avatar_url(
+                            comment,
+                            @presence_members,
+                            @session_id,
+                            @avatar_url,
+                            @profile_overrides
+                          )
+                        }
+                        alt={resolved_comment_display_name(comment, @profile_overrides)}
+                        class="h-full w-full rounded-full object-cover"
+                      />
+                      <span :if={
+                        !comment_avatar_url(
+                          comment,
+                          @presence_members,
+                          @session_id,
+                          @avatar_url,
+                          @profile_overrides
+                        )
+                      }>
+                        {comment_profile_initial(
+                          resolved_comment_display_name(comment, @profile_overrides)
+                        )}
                       </span>
                     </span>
 
+                    <.link
+                      :if={user_profile_path_from(comment)}
+                      id={"room-comment-author-#{comment.id}"}
+                      navigate={user_profile_path_from(comment)}
+                      class="text-xs font-semibold text-slate-700 underline-offset-2 transition hover:text-teal-700 hover:underline"
+                    >
+                      {resolved_comment_display_name(comment, @profile_overrides)}
+                    </.link>
+
                     <p
+                      :if={!user_profile_path_from(comment)}
                       id={"room-comment-author-#{comment.id}"}
                       class="text-xs font-semibold text-slate-700"
                     >
-                      {comment.display_name}
+                      {resolved_comment_display_name(comment, @profile_overrides)}
                     </p>
 
                     <time
@@ -1027,6 +1113,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, [])
         |> assign(:overlay_highlight_comments, [])
+        |> assign(:profile_overrides, %{})
         |> assign(:like_count, 0)
         |> assign(:dislike_count, 0)
         |> assign(:view_count, 0)
@@ -1050,6 +1137,14 @@ defmodule MatdoriWeb.RoomLive do
         overlay_highlights = Collab.list_overlay_highlights(post.id)
         overlay_highlight_comments = Collab.list_overlay_highlight_comments(post.id)
 
+        profile_overrides =
+          profile_overrides_for(
+            room_comments,
+            highlights,
+            overlay_highlights,
+            overlay_highlight_comments
+          )
+
         socket =
           socket
           |> maybe_unsubscribe_from_previous_topics(post)
@@ -1069,6 +1164,7 @@ defmodule MatdoriWeb.RoomLive do
         |> assign(:room_comment_form, empty_room_comment_form())
         |> assign(:overlay_highlights, overlay_highlights)
         |> assign(:overlay_highlight_comments, overlay_highlight_comments)
+        |> assign(:profile_overrides, profile_overrides)
         |> assign(
           :segments,
           build_segments((active_snapshot && active_snapshot.normalized_text) || "", highlights)
@@ -1188,16 +1284,82 @@ defmodule MatdoriWeb.RoomLive do
 
   defp preview_description(post) do
     case String.trim(post.preview_description || "") do
-      "" -> "Open the original link for more details."
-      value -> value
+      "" ->
+        case String.trim(post.preview_title || "") do
+          "" -> "OG preview description is unavailable."
+          title -> title
+        end
+
+      value ->
+        value
     end
   end
 
   defp preview_image_url(post) do
     case String.trim(post.preview_image_url || "") do
       "" -> nil
-      value -> value
+      value -> normalize_preview_image_url(value)
     end
+  end
+
+  defp normalize_preview_image_url(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} = parsed
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        parsed
+        |> maybe_upgrade_to_https()
+        |> URI.to_string()
+
+      _ ->
+        nil
+    end
+  end
+
+  defp maybe_upgrade_to_https(%URI{scheme: "http"} = uri), do: %{uri | scheme: "https"}
+  defp maybe_upgrade_to_https(uri), do: uri
+
+  defp preview_source(post) do
+    case URI.parse(String.trim(post.tweet_url || "")) do
+      %URI{host: host} when is_binary(host) and host != "" -> host
+      _ -> "source unavailable"
+    end
+  end
+
+  defp preview_card(assigns) do
+    ~H"""
+    <div id="link-preview-card" class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <a
+        id="preview-card-source"
+        href={@post.tweet_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="block transition hover:bg-slate-50"
+      >
+        <div class="aspect-[16/9] w-full bg-zinc-100">
+          <img
+            :if={preview_image_url(@post)}
+            id="preview-card-image"
+            src={preview_image_url(@post)}
+            alt={display_title(@post)}
+            class="h-full w-full object-cover"
+            loading="lazy"
+            referrerpolicy="no-referrer"
+          />
+          <div :if={!preview_image_url(@post)} class="flex h-full items-center justify-center">
+            <div class="space-y-1 px-3 text-left">
+              <p class="line-clamp-1 text-xs font-bold text-slate-900">{display_title(@post)}</p>
+              <p class="line-clamp-2 text-[11px] text-slate-600">{preview_description(@post)}</p>
+              <p class="line-clamp-1 text-[10px] text-slate-500">{preview_source(@post)}</p>
+            </div>
+          </div>
+        </div>
+        <div class="space-y-1.5 p-3">
+          <p class="truncate text-sm font-bold text-slate-900">{display_title(@post)}</p>
+          <p class="text-xs leading-relaxed text-slate-600">{preview_description(@post)}</p>
+        </div>
+      </a>
+    </div>
+    """
   end
 
   defp participant_count(presences) when is_map(presences), do: map_size(presences)
@@ -1354,21 +1516,92 @@ defmodule MatdoriWeb.RoomLive do
 
   defp normalize_avatar_url(_value, _default), do: nil
 
-  defp comment_avatar_url(comment, presence_members, my_session_id, my_avatar_url) do
+  defp comment_avatar_url(
+         comment,
+         presence_members,
+         my_session_id,
+         my_avatar_url,
+         profile_overrides
+       ) do
+    profile_avatar_url =
+      case resolved_identity(google_uid_from(comment), profile_overrides) do
+        %{avatar_url: value} when is_binary(value) and value != "" -> value
+        _ -> nil
+      end
+
     cond do
       is_binary(my_avatar_url) and my_avatar_url != "" and comment.session_id == my_session_id ->
         my_avatar_url
 
       is_map(presence_members) ->
         case Map.get(presence_members, comment.session_id) do
-          nil -> nil
+          nil -> profile_avatar_url
           presence -> presence_avatar_url(presence)
         end
+
+      is_binary(profile_avatar_url) and profile_avatar_url != "" ->
+        profile_avatar_url
 
       true ->
         nil
     end
   end
+
+  defp resolved_comment_display_name(comment, profile_overrides) do
+    identity = resolved_identity(google_uid_from(comment), profile_overrides)
+    identity.display_name || normalize_display_name(comment)
+  end
+
+  defp resolved_comment_color(comment, profile_overrides) do
+    identity = resolved_identity(google_uid_from(comment), profile_overrides)
+    identity.color || normalize_hex_color(meta_color(comment), "#64748b")
+  end
+
+  defp profile_overrides_for(
+         room_comments,
+         highlights,
+         overlay_highlights,
+         overlay_highlight_comments
+       ) do
+    google_uids =
+      room_comments
+      |> collect_google_uids_from_identity_source()
+      |> Kernel.++(collect_google_uids_from_identity_source(highlights))
+      |> Kernel.++(collect_google_uids_from_identity_source(overlay_highlights))
+      |> Kernel.++(collect_google_uids_from_identity_source(overlay_highlight_comments))
+      |> Enum.uniq()
+
+    Collab.list_profiles_by_google_uids(google_uids)
+  end
+
+  defp collect_google_uids_from_identity_source(entries) when is_list(entries) do
+    entries
+    |> Enum.map(&google_uid_from/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp collect_google_uids_from_identity_source(_entries), do: []
+
+  defp google_uid_from(data) do
+    case data do
+      %{google_uid: uid} when is_binary(uid) and uid != "" -> uid
+      %{"google_uid" => uid} when is_binary(uid) and uid != "" -> uid
+      _ -> nil
+    end
+  end
+
+  defp resolved_identity(nil, _profile_overrides),
+    do: %{display_name: nil, color: nil, avatar_url: nil}
+
+  defp resolved_identity(google_uid, profile_overrides) when is_map(profile_overrides) do
+    case Map.get(profile_overrides, google_uid) do
+      %{display_name: _name, color: _color, avatar_url: _avatar} = profile -> profile
+      _ -> %{display_name: nil, color: nil, avatar_url: nil}
+    end
+  end
+
+  defp resolved_identity(_google_uid, _profile_overrides),
+    do: %{display_name: nil, color: nil, avatar_url: nil}
 
   defp meta_cursor(data) do
     case data do
@@ -1715,10 +1948,11 @@ defmodule MatdoriWeb.RoomLive do
     presence_members = socket.assigns[:presence_members] || %{}
     my_session_id = socket.assigns[:session_id]
     my_avatar_url = socket.assigns[:avatar_url]
+    profile_overrides = socket.assigns[:profile_overrides] || %{}
 
     socket
     |> push_event("overlay_highlights_state", %{
-      highlights: overlay_highlights_payload(overlay_highlights)
+      highlights: overlay_highlights_payload(overlay_highlights, profile_overrides)
     })
     |> push_event("overlay_highlight_comments_state", %{
       comments:
@@ -1726,17 +1960,21 @@ defmodule MatdoriWeb.RoomLive do
           overlay_highlight_comments,
           presence_members,
           my_session_id,
-          my_avatar_url
+          my_avatar_url,
+          profile_overrides
         )
     })
   end
 
-  defp overlay_highlights_payload(highlights) when is_list(highlights) do
+  defp overlay_highlights_payload(highlights, profile_overrides) when is_list(highlights) do
     Enum.map(highlights, fn highlight ->
+      identity = resolved_identity(google_uid_from(highlight), profile_overrides)
+
       %{
         session_id: highlight.session_id,
-        display_name: highlight.display_name,
-        color: highlight.color,
+        display_name: identity.display_name || highlight.display_name,
+        color: identity.color || highlight.color,
+        profile_url: user_profile_path_from(highlight),
         id: highlight.highlight_key,
         left: highlight.left,
         top: highlight.top,
@@ -1747,29 +1985,34 @@ defmodule MatdoriWeb.RoomLive do
     end)
   end
 
-  defp overlay_highlights_payload(_), do: []
+  defp overlay_highlights_payload(_, _), do: []
 
   defp overlay_highlight_comments_payload(
          comments,
          presence_members,
          my_session_id,
-         my_avatar_url
+         my_avatar_url,
+         profile_overrides
        )
        when is_list(comments) do
     Enum.map(comments, fn comment ->
+      identity = resolved_identity(google_uid_from(comment), profile_overrides)
+
       %{
         id: comment.id,
         highlight_id: comment.highlight_id,
         session_id: comment.session_id,
-        display_name: comment.display_name,
-        color: comment.color,
+        display_name: identity.display_name || comment.display_name,
+        color: identity.color || comment.color,
+        profile_url: user_profile_path_from(comment),
         body: comment.body,
         avatar_url:
           comment_avatar_url_from_session(
             comment.session_id,
             presence_members,
             my_session_id,
-            my_avatar_url
+            my_avatar_url,
+            identity.avatar_url
           ),
         inserted_at:
           case comment.inserted_at do
@@ -1780,9 +2023,22 @@ defmodule MatdoriWeb.RoomLive do
     end)
   end
 
-  defp overlay_highlight_comments_payload(_, _, _, _), do: []
+  defp overlay_highlight_comments_payload(_, _, _, _, _), do: []
 
-  defp comment_avatar_url_from_session(session_id, presence_members, my_session_id, my_avatar_url)
+  defp user_profile_path_from(data) do
+    case google_uid_from(data) do
+      uid when is_binary(uid) and uid != "" -> ~p"/users/#{uid}"
+      _ -> nil
+    end
+  end
+
+  defp comment_avatar_url_from_session(
+         session_id,
+         presence_members,
+         my_session_id,
+         my_avatar_url,
+         profile_avatar_url
+       )
        when is_binary(session_id) do
     cond do
       is_binary(my_avatar_url) and my_avatar_url != "" and session_id == my_session_id ->
@@ -1790,9 +2046,12 @@ defmodule MatdoriWeb.RoomLive do
 
       is_map(presence_members) ->
         case Map.get(presence_members, session_id) do
-          nil -> nil
+          nil -> profile_avatar_url
           presence -> presence_avatar_url(presence)
         end
+
+      is_binary(profile_avatar_url) and profile_avatar_url != "" ->
+        profile_avatar_url
 
       true ->
         nil
@@ -1803,7 +2062,8 @@ defmodule MatdoriWeb.RoomLive do
          _session_id,
          _presence_members,
          _my_session_id,
-         _my_avatar_url
+         _my_avatar_url,
+         _profile_avatar_url
        ),
        do: nil
 

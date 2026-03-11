@@ -41,7 +41,7 @@ defmodule Matdori.Embed do
   end
 
   def status_label(%{mode: :native_embed}), do: "Embeddable"
-  def status_label(_), do: "Preview"
+  def status_label(_), do: "OG Preview"
 
   def youtube_video_embed_url(video_id), do: "https://www.youtube.com/embed/#{video_id}?rel=0"
 

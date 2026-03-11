@@ -437,6 +437,54 @@ defmodule Matdori.CollabTest do
              "#ef4444"
   end
 
+  test "update_display_name_by_google_uid/2 syncs historical authored records" do
+    post = insert_post_with_snapshot()
+    google_uid = "google-sync-update-name"
+
+    assert {:ok, _} =
+             Collab.replace_overlay_highlights(post.id, %{
+               session_id: "session-1",
+               google_uid: google_uid,
+               display_name: "이전 이름",
+               color: "#111111",
+               highlights: [
+                 %{
+                   "id" => "old-overlay-1",
+                   "left" => 0.1,
+                   "top" => 0.1,
+                   "width" => 0.2,
+                   "height" => 0.2
+                 }
+               ]
+             })
+
+    {:ok, _comment} =
+      Collab.create_room_comment(post.id, %{
+        "session_id" => "session-1",
+        "google_uid" => google_uid,
+        "display_name" => "이전 이름",
+        "color" => "#111111",
+        "body" => "room comment"
+      })
+
+    assert {:ok, _profile} =
+             Collab.update_display_name_by_google_uid(google_uid, "새로운 이름")
+
+    assert Repo.one!(
+             from o in OverlayHighlight,
+               where: o.google_uid == ^google_uid,
+               where: o.post_id == ^post.id,
+               select: o.display_name
+           ) == "새로운 이름"
+
+    assert Repo.one!(
+             from c in Comment,
+               where: c.google_uid == ^google_uid,
+               where: c.post_id == ^post.id,
+               select: c.display_name
+           ) == "새로운 이름"
+  end
+
   test "delete_post_by_owner/2 hides only owner-created post" do
     owner_uid = "google-room-owner"
 

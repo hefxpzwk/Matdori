@@ -111,7 +111,7 @@ defmodule MatdoriWeb.RoomIndexLive do
                 patch={room_list_path("preview", @sort)}
                 class={control_link_class(@embed_filter == "preview")}
               >
-                Preview Only
+                OG Preview Only
               </.link>
             </div>
           </div>
@@ -188,11 +188,12 @@ defmodule MatdoriWeb.RoomIndexLive do
                         alt={display_title(post)}
                         class="x-media-thumb"
                         loading="lazy"
+                        referrerpolicy="no-referrer"
                       />
                     <% true -> %>
                       <div class="x-media-fallback">
                         <p class="x-media-fallback-title">{display_title(post)}</p>
-                        <p class="x-media-fallback-url">{fallback_preview_text(post)}</p>
+                        <p class="x-media-fallback-url">{og_preview_text(post)}</p>
                       </div>
                   <% end %>
 
@@ -291,15 +292,31 @@ defmodule MatdoriWeb.RoomIndexLive do
   defp preview_image_url(post) do
     case String.trim(post.preview_image_url || "") do
       "" -> nil
-      url -> url
+      url -> normalize_preview_image_url(url)
     end
   end
 
-  defp fallback_preview_text(post) do
+  defp normalize_preview_image_url(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} = parsed
+      when scheme in ["http", "https"] and is_binary(host) and host != "" ->
+        parsed
+        |> maybe_upgrade_to_https()
+        |> URI.to_string()
+
+      _ ->
+        nil
+    end
+  end
+
+  defp maybe_upgrade_to_https(%URI{scheme: "http"} = uri), do: %{uri | scheme: "https"}
+  defp maybe_upgrade_to_https(uri), do: uri
+
+  defp og_preview_text(post) do
     post.preview_description ||
       post.preview_title ||
       snapshot_preview_text(post.current_snapshot) ||
-      post.tweet_url
+      "OG preview description is unavailable."
   end
 
   defp snapshot_preview_text(%Ecto.Association.NotLoaded{}), do: nil
